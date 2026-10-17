@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { MoreHorizontal, Plus } from 'lucide-react'
 import { go } from '@/App'
-import { Button, buttonVariants } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button'
 import { useProjects } from '@/store/projectsStore'
 import type { ProjectMeta } from '@/store/projectsStore'
 import { cn } from '@/lib/utils'
@@ -26,7 +26,7 @@ export default function Dashboard() {
   const sorted = [...projects.filter((p) => !!p)].sort((a, b) => b.updatedAt - a.updatedAt)
 
   const newProject = () => {
-    const p = useProjects.getState().add('Untitled')
+    const p = useProjects.getState().addRandom()
     go(`/board/${p.id}`)
   }
 
@@ -45,7 +45,7 @@ export default function Dashboard() {
           >
             Log in
           </button>
-          <button onClick={newProject} className={pillWhite}>
+          <button onClick={newProject} className={sorted.length === 0 ? pillDark : pillWhite}>
             <Plus size={14} />
             New project
           </button>
@@ -61,12 +61,11 @@ export default function Dashboard() {
               <FlowerLogo size={56} className="opacity-80" />
               <div>
                 <p className="text-[14px] font-medium">Your petals bloom here</p>
-                <p className="mt-1 text-[12px] text-muted-foreground">Create a project and start drawing — everything stays on this device.</p>
               </div>
-              <Button onClick={newProject}>
+              <button onClick={newProject} className={pillWhite}>
                 <Plus size={14} />
                 Create your first project
-              </Button>
+              </button>
             </div>
           ) : (
             <div className="mt-8 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">

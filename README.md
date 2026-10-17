@@ -1,103 +1,223 @@
-# Petal 🌸
+<div align="center">
 
-A browser-based design tool in the spirit of Figma — canvas, frames, layers and a full
-properties inspector — built as a local-first app with no backend. Everything (documents,
-pages, UI state) lives in `localStorage`.
+<img src="public/petal-flower.svg" alt="Petals logo" width="88" />
+
+# Petals
+
+**A browser-based design tool — canvas, frames, layers and a full inspector, in the spirit of Figma.**
+
+Local-first: no backend, no accounts, nothing leaves the device. Every document, page and UI
+state lives in `localStorage`, right in your browser.
+
+[Stack](#stack) · [Capabilities](#capabilities) · [Getting started](#getting-started) · [Architecture](#architecture) · [MCP](#making-petals-scriptable--mcp)
+
+</div>
+
+---
 
 ## Stack
 
 - **Vite + React 19 + TypeScript**, **Tailwind 4** + **shadcn/ui** (Button, Input, Tooltip, plus
-  in-house `MiniSelect` / `MiniSwitch` so no web-default dropdowns, checkboxes or radios are ever shown)
-- **zustand** stores: `docStore` (Immer document + history), `uiStore` (camera, selection, panels)
+  in-house `MiniSelect` / `MiniSwitch` so no web-default dropdowns, checkboxes or radios are shown)
+- **zustand** stores: `docStore` (Immer document + structured history), `uiStore` (camera, selection, gestures, clipboard)
 - **Geist Variable / Geist Mono Variable** via `@fontsource-variable` (wired as `--font-sans` / `--font-mono`)
-- Custom DOM-based rendering engine (memoized per-shape `NodeView`, camera transform outside React,
-  fractional `order` z-index) so hundreds of shapes stay interactive
-- bun for all tooling (`bun run dev`, `bun run build`, `bunx tsc --noEmit`)
+- Custom **DOM-based rendering engine** — memoized per-shape `NodeView`, camera transform applied
+  outside React, fractional `order` z-index — so hundreds of shapes stay interactive
+- **bun** for all tooling (never npm)
 
-## Scripts
+## Capabilities
 
-| Command | What it does |
-| --- | --- |
-| `bun run dev` | Dev server on `localhost:5173` |
-| `bun run build` | `tsc --noEmit` + production bundle |
-| `bun run scripts/docTest.ts` | Headless document-model checks (history, schema, selection) |
-| `bun build scripts/e2eVerify.ts --target=node --external=playwright-core --outfile=scripts/e2eVerify.mjs && node scripts/e2eVerify.mjs` | Browser E2E suite (drives installed Edge) |
+### Canvas & shapes
+- Frame / rectangle / ellipse / line / image / text tools; draw into frames (nesting) or the page
+- Frame presets (incl. **Desktop 1080p**, 1920×1080) that **auto-fit on screen** when created
+- Multi-select, marquee, shift-click; align panel; position & size with constraint-aware scrub fields
+- **Right-click context menu on the canvas**: bring to front / send to back, flip H / flip V,
+  copy, paste, **copy as ▸ Code / PNG / SVG**, group selection, duplicate, lock/unlock, hide/show,
+  rename, delete — every op implemented for real against the document model
+- **Alt + hover measurement** (Figma-style): hold Alt and hover another element to see dotted pink
+  distance labels to the selection on every side, plus solid edge-alignment markers
+- Keyboard: Ctrl+C/V/X/D, arrow nudge, Escape cascade, delete
 
-## Shipped today
+### Appearance
+- Fill: solid, **linear / radial / conic gradients** (thin gradient bar, stops as color rows,
+  icon-only gradient-type switcher), **image fills** (cover / contain)
+- Border with width + color, **outer / inner shadows** (X / Y / blur / spread), 8 CSS filters
+- Opacity, corner radius (uniform or per-corner), rotation + flips applied to every renderer
+  (DOM, canvas, SVG, EPS alike) — via one shared transform helper
 
-- Frame / rectangle / ellipse / line / image / text tools, drawing into frames (nesting) or the page
-- Multi-select with align panel, position & size, opacity, corner radius (uniform or per-corner), rotation
-- Fill: solid, **linear / radial / conic gradients** (with gradient bar + stops), **image fills** (cover/contain)
-- Border with width + color, **outer / inner shadows with X / Y / blur / spread**, 8 CSS filters
-- Frame margin, clip toggle, canvas background color
-- Layers panel with multi-page documents, rename, reorder, hide/lock
-- Undo/redo with structured history snapshots, localStorage persistence
-- Exports: PNG / JPG / WEBP / AVIF (2× raster), SVG (vector), **EPS / AI** (hand-written PostScript writer
-  with solid fills, PS shading for gradients, rounded corners, embedded raster images and Helvetica text)
-- Custom color picker popovers (react-colorful) with alpha, boxed color rows, constraint-aware scrub fields
+### Layers & documents
+- Multi-page documents; layers panel with drag-reorder (above / below / nest-in), hide & lock
+  toggles, inline rename (double-click, or via the context menu)
+- Dense panel layout with **auto-hiding ultra-thin scrollbars**
+- Undo/redo with structured history snapshots (never captures Immer drafts)
+- Persistence to `localStorage` with debounced saves; docs survive reloads and hash-deep links
+- Dashboard with **randomly generated stub names** (`Sleepy-Walrus-3902`-style) so you can start
+  sketching in one click
 
-## Roadmap — features we're missing
+### Export
+- Raster: PNG / JPG / WEBP / AVIF at 1×–4×
+- Vector: **SVG**, plus a hand-written PostScript writer — **EPS** (and `.ai` interop) with solid
+  fills, PS shading for gradients, rounded corners, embedded rasters and Helvetica text
+- **Code**: right-click ▸ Copy as ▸ Code, or Export menu — produces a React component styled with
+  **Tailwind** (+ inline style only where Tailwind can't express gradients/filters/typography)
 
-Audited against the Wonder design-platform tool surface (41 tools, grouped by job); each group below maps
-to product capability Petal does not have yet:
+## Getting started
 
-### File & workspace management
-Wonder: `list_files / create_file / rename_file / move_file / create_folder / move_page / rename_page`
-- [ ] Multi-file workspace with folders (today: one dashboard list, flat)
-- [ ] File rename/rename in place, file thumbnails for the dashboard (`take_screenshot` equivalent)
-- [ ] File organization / move between workspaces
-- [ ] Cloud persistence + branching history (we only snapshot to `localStorage`)
-- [ ] Version history browser with restore points
+```bash
+bun install        # bun only — never npm
+bun run dev        # dev server on localhost:5173
+bun run build      # tsc --noEmit + production bundle
+bun run preview    # serve the production build
+```
 
-### Design system
-Wonder: `create_design_tokens / update_design_tokens / delete_design_tokens / get_design_tokens / create_icons / update_icons / delete_icons / get_icons`
-- [ ] **Design tokens** — named color/typography/spacing tokens that styles reference (our fills are raw values)
-- [ ] Shared **icon library** inside a file (reusable, recolorable SVG components)
-- [ ] Global type styles & color styles referenced by shape properties
+## Architecture
 
-### Canvas intelligence
-Wonder: `get_artboards / find_elements / get_element_tree / get_design_context / get_design_guidelines`
-- [ ] Find/search layers by name or property (e.g. "all fills #f472b6")
-- [ ] Structural query API over the document tree (tree/element introspection used by tooling)
-- [ ] Artboard presets / layout guidelines toolbar (grid, columns), rulers, guide lines, snap-to-grid
-- [ ] Zoom-to-fit shortcuts parity, measure/inspect mode (spec readout of spacing)
+```
+src/
+  model/       types, zod schema, defaults, geometry, shared styles/transforms
+  store/       docStore (Immer doc + history), uiStore (camera/selection/clipboard), projectsStore
+  editor/      CanvasRoot (pointer/wheel camera), NodeView renderer, SelectionOverlay,
+               HoverMeasure (alt-measure), LeftPanel, PropertiesPanel, ContextMenu, exporters
+  pages/       Landing, Dashboard (project list), EditorPage wiring
+```
 
-### Elements & drawing
-Wonder: `update_elements / delete_elements / duplicate_elements / rename_elements`
-- [ ] **Auto layout** (flexbox-like stacking, padding/gap driven by frame margin — we only have static margin)
-- [ ] Constraint-based resizing (pin left/right/top/bottom)
-- [ ] Boolean operations (union / subtract / intersect / flatten)
-- [ ] Vector/pen tool: point-level path editing (our shapes are parametric only)
-- [ ] Component system: create component, instances, propagate changes, variants
-- [ ] Prototyping: link frames with transitions, hotspot overlays, preview mode
-- [ ] Rich text (mixed-weight spans within one text node), vertical text alignment, auto-width boxes
+Rules of the codebase: every document mutation goes through the commands / `docStore` tx APIs;
+history snapshots are `structuredClone`d; the camera transform lives outside React; visibility,
+locks and flips are plain shape fields respected by every renderer.
 
-### Assets & media
-Wonder: `generate_image / generate_svg / vectorize_image / prepare_image_upload / fetch_image_content / fetch_image_description`
-- [ ] AI image generation & in-app image search
-- [ ] SVG *authoring*/vectorize: import SVG as editable paths; raster→vector trace
-- [ ] Image crop/mask mode on image shapes
+## Verification
 
-### Design ↔ code bridge
-Wonder: `get_element_code / get_design_context / skills (code-to-design, design-to-code)`
-- [ ] Read a selection into code (symbol/JSX/Tailwind readout)
-- [ ] Push code/artboards into the canvas from a repository ("code to design")
-- [ ] Plugin/extension API exposing the document (`get_element_tree`-style) to outside tools — **this is also
-  the entry point for making Petal scriptable via an MCP server** (see next section)
+Full browser suites driving an installed Edge/Chromium (playwright-core, headless):
 
-### Formats & batch export
-- [ ] PDF export, per-node export marks (batch export at 1×/2×/… with prefixes)
-- [ ] Export transparency/format presets stored on the node
+```bash
+bun build scripts/e2eVerify.ts  --target=node --external=playwright-core --outfile=scripts/e2eVerify.mjs && node scripts/e2eVerify.mjs   # drawing, frames, panels, undo/redo, stores
+bun build scripts/menuVerify.ts --target=node --external=playwright-core --outfile=scripts/menuVerify.mjs && node scripts/menuVerify.mjs  # context menu ops, copy/paste, group, lambdas, alt-measure
+```
 
-## Making Petal scriptable (MCP notes)
+Both end with a pass/fail summary, a console-error report and a non-zero exit code on failure.
+Screenshots land in `test-artifacts/`.
 
-Research summary from the [Model Context Protocol TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk):
+## Making Petals scriptable — MCP
 
-- Use `@modelcontextprotocol/sdk`-style registration: an `McpServer` instance, `registerTool(name, schema, handler)`
-  with zod schemas, then `connect(new StdioServerTransport())` — one TS file is enough.
-- The natural Petal tool set mirrors the list above: `get_doc` / `find_elements` / `create_frame` / `update_elements` /
-  `delete_elements` / `export_selection` — all thin wrappers over the existing `commands.ts` mutations.
-- Hosts connect to it by pointing their MCP config at a stdio command (`bunx tsx petal-mcp.ts`); a read-only
-  document resource can be exposed alongside the tools.
-- Editing the *live* editor (the canvas you have open) needs a second channel: a WebSocket bridge from the dev
-  page (`docStore` already reacts to messages) — the MCP process becomes a relay to that socket.
+Petal's document is a plain serializable tree, which makes it a natural fit for
+[Model Context Protocol](https://modelcontextprotocol.io) (MCP): AI hosts (Claude Desktop, Claude
+Code, OpenCode, …) connect over stdio and get tools to read and edit designs. Nothing in this repo
+bound to a server today — here is the full recipe to build it.
+
+### 1. Add the SDK
+
+```bash
+bun add @modelcontextprotocol/sdk zod
+```
+
+### 2. Write the server (`mcp-server/petal-mcp.ts`)
+
+Register tools with zod schemas, serve over stdio. Each tool is a thin wrapper over the same
+structures the editor uses (see `src/model/types.ts` and `src/editor/commands.ts`):
+
+```ts
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+import { z } from 'zod'
+import { readDoc, writeDoc } from './bridge.js' // step 3
+
+const server = new McpServer({ name: 'petals', version: '0.1.0' })
+
+server.registerTool('get_doc', {
+  description: 'Read the current Petals document as a node tree',
+  inputSchema: { projectId: z.string() },
+}, async ({ projectId }) => ({
+  content: [{ type: 'text', text: JSON.stringify(await readDoc(projectId)) }],
+}))
+
+server.registerTool('update_elements', {
+  description: 'Patch one or more shapes: position, size, fill, visible, locked, name…',
+  inputSchema: {
+    projectId: z.string(),
+    patches: z.array(z.object({ id: z.string(), fields: z.record(z.unknown()) })),
+  },
+}, async ({ projectId, patches }) => {
+  const doc = await readDoc(projectId)
+  for (const { id, fields } of patches) Object.assign(doc.nodes[id], fields)
+  await writeDoc(projectId, doc)
+  return { content: [{ type: 'text', text: `updated ${patches.length} shape(s)` }] }
+})
+
+server.registerTool('delete_elements', {
+  description: 'Delete shapes (and their subtrees) by id',
+  inputSchema: { projectId: z.string(), ids: z.array(z.string()) },
+}, async ({ projectId, ids }) => {
+  const doc = await readDoc(projectId)
+  for (const id of ids) delete doc.nodes[id]
+  await writeDoc(projectId, doc)
+  return { content: [{ type: 'text', text: `deleted ${ids.length}` }] }
+})
+
+await server.connect(new StdioServerTransport())
+```
+
+Follow the same pattern for `create_frame`, `duplicate_elements`, `rename_elements`,
+`export_selection` (reusing `exporters.ts`) and a read-only `doc://<projectId>` resource via
+`server.resource(...)`.
+
+### 3. Bridge the browser storage to the server
+
+MCP runs as a Node process, but documents live in the browser's `localStorage`. Two clean options:
+
+- **File exchange (simplest):** add "Export project JSON / Import" to the dashboard; the server
+  reads/writes those JSON files on disk. Perfect for batch AI edits and CI-style tools.
+- **Live editor bridge:** run a small WebSocket relay inside the MCP process; the editor page
+  connects to it on load and forwards every `docStore` change. Tools then mutate the *live*
+  document through the existing commands (the store already reacts to incoming messages).
+  Sketch of the client side, dropped into `EditorPage`:
+
+```ts
+// one-way live sync of the serialized doc
+const ws = new WebSocket('ws://localhost:8765')
+ws.onopen = () => ws.send(JSON.stringify({ type: 'doc', doc: serialize(docStore.getState()) }))
+```
+
+(Debounce and reconcile with the history model — the relay is the only stateful piece.)
+
+### 4. Register it with an MCP host
+
+Claude Desktop (`claude_desktop_config.json`), Claude Code, or OpenCode's `mcp` config:
+
+```json
+{
+  "mcpServers": {
+    "petals": {
+      "command": "bun",
+      "args": ["run", "mcp-server/petal-mcp.ts"],
+      "cwd": "D:/Projects/iota-draw"
+    }
+  }
+}
+```
+
+### 5. Test it
+
+```bash
+bunx @modelcontextprotocol/inspector bun run mcp-server/petal-mcp.ts
+```
+
+…opens the interactive inspector: connect, call `get_doc`, patch a fill, confirms in the browser.
+
+## Roadmap — what's still missing
+
+Audited against the Wonder design-platform tool surface; each group is a capability Petals
+does not have yet:
+
+- **File & workspace management** — multi-file workspaces with folders, file thumbnails for the
+  dashboard, cloud persistence + version history browser
+- **Design system** — design tokens (named color/type/spacing), shared icon library, global styles
+- **Canvas intelligence** — layer search ("all fills #f472b6"), structural query API for tooling,
+  rulers/guides/snap-to-grid, prototyping links between frames
+- **Elements & drawing** — auto layout (flexbox-like frames), constraint-based resizing, boolean
+  ops, pen/vector editing, component + variants, rich text
+- **Assets & media** — AI image generation, SVG authoring/vectorize, image crop/mask mode
+- **Design ↔ code bridge** — live round-trip (push code/artboards onto the canvas, pull updates back)
+- **Formats** — PDF export, per-node batch export marks
+
+Petal is an independent project. The Atelier codebase (`D:\Projects\reference\atelier`) was used
+as a *reference only* — no GPL-3.0 code was copied (see `ATTRIBUTION.md`).
