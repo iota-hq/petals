@@ -29,18 +29,19 @@ export default function Dashboard() {
 
   return (
     <div className="flex h-dvh flex-col">
-      <header className="flex h-14 shrink-0 items-center justify-between border-b border-white/10 bg-card px-5 md:px-7">
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-white/10 bg-background px-5 md:px-7">
         <button className="flex cursor-pointer items-center gap-2" onClick={() => go('/')}>
           <FlowerLogo size={18} />
           <span className="text-[13px] font-semibold tracking-tight">Petal</span>
         </button>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 text-[13px]">
-            <div className="flex size-6 items-center justify-center rounded-full bg-gradient-to-br from-pink-400 to-fuchsia-500 text-[10px] font-bold text-white">
-              u
-            </div>
-            user
-          </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={(e) => e.preventDefault()}
+            className={pillDark}
+            aria-label="Log in (coming soon)"
+          >
+            Log in
+          </button>
           <button onClick={newProject} className={pillWhite}>
             <Plus size={14} />
             New project
