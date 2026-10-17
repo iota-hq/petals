@@ -10,9 +10,9 @@ function FlowerLogo({ size = 20, className }: { size?: number; className?: strin
   return <img src="/petal-flower.svg" alt="" width={size} height={size} className={className} aria-hidden="true" />
 }
 
-/** Compact dark pill matching the landing nav button. */
-const pillDark =
-  'inline-flex h-9 cursor-pointer items-center gap-2 rounded-full bg-[#262626] px-4 text-[13px] font-medium text-foreground transition-colors hover:bg-[#333333]'
+/** Compact white pill matching the landing hero button. */
+const pillWhite =
+  'inline-flex h-9 cursor-pointer items-center gap-2 rounded-full bg-white px-4 text-[13px] font-medium text-neutral-950 transition-colors hover:bg-white/90'
 
 function fmtDate(ts: number) {
   return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
@@ -41,7 +41,7 @@ export default function Dashboard() {
             </div>
             user
           </div>
-          <button onClick={newProject} className={pillDark}>
+          <button onClick={newProject} className={pillWhite}>
             <Plus size={14} />
             New project
           </button>
