@@ -183,3 +183,121 @@ export function IconConic(p: P) {
     p,
   )
 }
+
+/* ---- text-field & filter icons supplied by the user (attribution in each comment) ---- */
+
+/** Font size — Material Symbols by Google (two T glyphs, tall and short). */
+export function IconFontSize(p: P) {
+  return svg(
+    '0 0 24 24',
+    <path d="M14 20V7H9V4h13v3h-5v13zm-9 0v-8H2V9h9v3H8v8z" />,
+    p,
+  )
+}
+
+/** Stroke width — Material Symbols by Google (bars thickening downward). */
+export function IconStrokeWidth(p: P) {
+  return svg(
+    '0 0 24 24',
+    <path d="M3 20v-1h18v1zm0-3v-2h18v2zm0-4v-3h18v3zm0-5V4h18v4z" />,
+    p,
+  )
+}
+
+/** Line height — Material Design Icons by Pictogrammers (A between rails). */
+export function IconLineHeight(p: P) {
+  return svg(
+    '0 0 24 24',
+    <path d="M21 22H3v-2h18zm0-18H3V2h18zm-11 9.7h4l-2-5.4zM11.2 6h1.7l4.7 12h-2l-.9-2.6H9.4L8.5 18h-2z" />,
+    p,
+  )
+}
+
+/** Letter spacing — Material Symbols by Google (A between horizontal arrows). */
+export function IconLetterSpacing(p: P) {
+  return svg(
+    '0 0 24 24',
+    <path d="m6 22l-4-4l4-4l1.425 1.4l-1.6 1.6h12.35L16.6 15.4L18 14l4 4l-4 4l-1.425-1.4l1.6-1.6H5.825L7.4 20.6zm.9-9L11 2h2l4.1 11h-1.9l-.95-2.8H9.8l-1 2.8zm3.45-4.4h3.3l-1.6-4.55h-.1z" />,
+    p,
+  )
+}
+
+/** Brightness — Myna UI Icons by Praveen Juge (radiating sun with hollow core). */
+export function IconBrightness(p: P) {
+  return svg(
+    '0 0 24 24',
+    <path d="M2.25 12a.75.75 0 0 1 .75-.75h1a.75.75 0 0 1 0 1.5H3a.75.75 0 0 1-.75-.75m2.22-7.53a.75.75 0 0 1 1.06 0l.707.707a.75.75 0 0 1-1.06 1.06L4.47 5.53a.75.75 0 0 1 0-1.06m15.06 0a.75.75 0 0 1 0 1.06l-.707.707a.75.75 0 1 1-1.06-1.06l.707-.707a.75.75 0 0 1 1.06 0M6.237 17.763a.75.75 0 0 1 0 1.06l-.707.707a.75.75 0 0 1-1.06-1.06l.707-.707a.75.75 0 0 1 1.06 0m11.526 0a.75.75 0 0 1 1.06 0l.707.707a.75.75 0 1 1-1.06 1.06l-.707-.707a.75.75 0 0 1 0-1.06M12 2.25a.75.75 0 0 1 .75.75v1a.75.75 0 0 1-1.5 0V3a.75.75 0 0 1 .75-.75m0 17a.75.75 0 0 1 .75.75v1a.75.75 0 0 1-1.5 0v-1a.75.75 0 0 1 .75-.75M19.25 12a.75.75 0 0 1 .75-.75h1a.75.75 0 0 1 0 1.5h-1a.75.75 0 0 1-.75-.75M12 8.25a3.75 3.75 0 1 0 0 7.5a3.75 3.75 0 0 0 0-7.5" />,
+    p,
+  )
+}
+
+/** Contrast — Material Symbols by Google (half-filled circle). */
+export function IconContrast(p: P) {
+  return svg(
+    '0 0 24 24',
+    <path d="M8.1 21.213q-1.825-.788-3.175-2.138T2.788 15.9T2 12t.788-3.9t2.137-3.175T8.1 2.788T12 2t3.9.788t3.175 2.137T21.213 8.1T22 12t-.788 3.9t-2.137 3.175t-3.175 2.138T12 22t-3.9-.788m4.9-1.287q2.975-.375 4.988-2.613T20 12t-2.013-5.312T13 4.075z" />,
+    p,
+  )
+}
+
+/** Grayscale — IconPark Outline by ByteDance (two frames split by a line). */
+export function IconGrayscale(p: P) {
+  return svg(
+    '0 0 48 48',
+    <path
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={4}
+      d="M30 10h10c1.886 0 2.828 0 3.414.586S44 12.114 44 14v20c0 1.886 0 2.828-.586 3.414S41.886 38 40 38H30M18 10H8c-1.886 0-2.828 0-3.414.586S4 12.114 4 14v20c0 1.886 0 2.828.586 3.414S6.114 38 8 38h10m6-32v36"
+    />,
+    p,
+  )
+}
+
+/** Hue rotation — selfh.st/icons (color wheel ring). */
+export function IconHue(p: P) {
+  return svg(
+    '0 0 512 512',
+    <path
+      fillRule="evenodd"
+      d="M343.6 440.3c0-5.8-4.7-10.5-10.6-10.5H178.9c-5.8 0-10.6 4.7-10.6 10.5s4.7 10.5 10.6 10.5h154.2c5.8 0 10.5-4.7 10.5-10.5m0 30.6c0-5.8-4.7-10.5-10.6-10.5H178.9c-5.8 0-10.6 4.7-10.6 10.5s4.7 10.5 10.6 10.5h154.2c5.8 0 10.5-4.7 10.5-10.5m-30.1 30.6c0-5.8-4.7-10.5-10.6-10.5H209c-5.8 0-10.6 4.7-10.6 10.5S203.1 512 209 512h93.9c5.8 0 10.6-4.7 10.6-10.5M285 58.8c-9.2-1.8-18.7-2.7-28.4-2.7q-15.3 0-29.7 3L206.4 6.3C222.5 2.2 239.3 0 256.6 0c16.9 0 33.2 2 48.9 5.9zm116.9 166.1q1.95-13.95 1.2-28.5c-.5-10.2-2.1-20-4.5-29.5l51.7-23.2c4.9 15.8 7.9 32.5 8.8 49.8c.9 16.8-.3 33.3-3.4 49.1zM227 348.1c9.2 1.8 18.7 2.7 28.4 2.7q15.3 0 29.7-3l20.5 52.8c-16.1 4.1-32.9 6.2-50.2 6.2c-16.9 0-33.2-2-48.9-5.9zM111.3 174.5c-1.8 9.2-2.7 18.7-2.7 28.4q0 15.3 3 29.7L58.8 253c-4.1-16.1-6.2-32.9-6.2-50.2c0-16.9 2-33.2 5.9-48.9zM354.4 25.4c28.5 15.8 52.8 38.2 70.8 65.2l-51.7 24.1c-11.2-14.7-25-27.3-40.9-37zm79.7 276.5c-15.8 28.5-38.2 52.8-65.2 70.8L344.8 321c14.7-11.2 27.3-25 37-40.9zm-276.5 79.6c-28.5-15.8-52.8-38.2-70.8-65.2l51.7-24.1c11.2 14.7 25 27.3 40.9 37zM77.9 105.1c15.8-28.5 38.2-52.8 65.2-70.8L167.2 86c-14.7 11.2-27.3 25-37 40.9z"
+    />,
+    p,
+  )
+}
+
+/** Invert — Famicons by Family (circle, one quadrant flipped). */
+export function IconInvert(p: P) {
+  return svg(
+    '0 0 512 512',
+    <>
+      <path d="M414.39 97.61A224 224 0 1 0 97.61 414.39A224 224 0 1 0 414.39 97.61M256 432v-96a80 80 0 0 1 0-160V80c97.05 0 176 79 176 176s-78.95 176-176 176" />
+      <path d="M336 256a80 80 0 0 0-80-80v160a80 80 0 0 0 80-80" />
+    </>,
+    p,
+  )
+}
+
+/** Saturate — Streamline (water drop). */
+export function IconSaturate(p: P) {
+  return svg(
+    '0 0 14 14',
+    <path
+      fillRule="evenodd"
+      d="M7 .75L6.47.22a.75.75 0 0 1 1.06 0zM7 12.5c-.838 0-2.072-.328-2.796-.98A3.84 3.84 0 0 1 2.94 8.904c.005-.674.251-1.478.676-2.348c.423-.868.996-1.744 1.582-2.534A28 28 0 0 1 7 1.841zM7 .75l.53-.53l.002.001l.003.004l.012.011l.043.045l.16.165a29 29 0 0 1 2.258 2.682c.616.833 1.246 1.79 1.724 2.77c.473.969.828 2.02.828 3.025l-.001.042a5.34 5.34 0 0 1-1.76 3.67C9.722 13.606 8.087 14 7 14c-1.085 0-2.72-.394-3.799-1.364a5.34 5.34 0 0 1-1.76-3.713c0-1.005.354-2.056.828-3.026c.478-.98 1.107-1.936 1.724-2.769A29 29 0 0 1 6.41.281l.043-.045l.012-.011l.003-.004h.001V.22z"
+      clipRule="evenodd"
+    />,
+    p,
+  )
+}
+
+/** Sepia — Fluent Emoji High Contrast by Microsoft (framed sheet with diagonals). */
+export function IconSepia(p: P) {
+  return svg(
+    '0 0 32 32',
+    <path d="M28 1a3 3 0 0 1 3 3v24a3 3 0 0 1-3 3H4a3 3 0 0 1-3-3V4a3 3 0 0 1 3-3zm1 3a1 1 0 0 0-1-1h-1.998L29 5.998zm0 2.705L25.295 3h-4.293L29 10.998zm0 5L20.295 3h-4.293L29 15.998zm0 5L15.295 3h-4.293L29 20.998zm0 5L10.295 3H6.002L29 25.998zm0 5L5.295 3H4a1 1 0 0 0-1 1v.998L27.002 29H28a1 1 0 0 0 1-1zM26.295 29L3 5.705v4.293L22.002 29zm-5 0L3 10.705v4.293L17.002 29zm-5 0L3 15.705v4.293L12.002 29zm-5 0L3 20.705v4.293L7.002 29zm-5 0L3 25.705V28a1 1 0 0 0 1 1z" />,
+    p,
+  )
+}

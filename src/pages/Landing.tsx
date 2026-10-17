@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { Menu, X } from 'lucide-react'
 import { go } from '@/App'
 
 /** Compact pill: label + icon together. */
@@ -7,6 +6,9 @@ const pillDark =
   'inline-flex h-9 items-center gap-2 rounded-full bg-[#262626] px-4 text-[13px] font-medium text-foreground transition-colors hover:bg-[#333333] cursor-pointer'
 const pillLight =
   'inline-flex h-9 items-center gap-2 rounded-full bg-white px-4 text-[13px] font-medium text-neutral-950 transition-colors hover:bg-white/90 cursor-pointer'
+
+const pillHero =
+  'inline-flex h-11 items-center gap-2.5 rounded-full bg-white px-6 text-[14px] font-medium text-neutral-950 transition-colors hover:bg-white/90 cursor-pointer'
 
 function Arrow() {
   return (
@@ -23,14 +25,14 @@ const LINKS = [
   ['Gallery', '#'],
 ] as const
 
-/** Small-screen secondary button (same pill style as "Open app") opening the page links. */
-function MobileMenu() {
+/** Secondary pill (same style as "Open app") opening the page links. Used on every viewport. */
+function PageMenu() {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!open) return
     const close = (e: PointerEvent) => {
-      if (!(e.target as HTMLElement).closest('[data-mobile-menu]')) setOpen(false)
+      if (!(e.target as HTMLElement).closest('[data-page-menu]')) setOpen(false)
     }
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
     document.addEventListener('pointerdown', close, true)
@@ -41,9 +43,9 @@ function MobileMenu() {
     }
   }, [open])
   return (
-    <div ref={rootRef} data-mobile-menu="" className="absolute left-5 top-2.5 z-10 md:hidden">
+    <div ref={rootRef} data-page-menu="" className="absolute left-5 top-2.5 z-10">
       <button onClick={() => setOpen((v) => !v)} className={pillDark} aria-expanded={open}>
-        {open ? <X size={14} /> : <Menu size={14} />}
+        {open ? 'Close' : 'Menu'}
       </button>
       {open && (
         <div className="absolute left-0 top-11 flex w-max flex-col items-stretch gap-1.5">
@@ -69,26 +71,7 @@ export default function Landing() {
 
       {/* nav */}
       <header className="relative z-10 flex h-14 items-center border-b border-white/10 px-5 md:px-7">
-        <nav className="hidden items-center gap-6 md:flex">
-          {(
-            [
-              ['About', '#'],
-              ['Careers', '#'],
-              ['Gallery', '#'],
-            ] as const
-          ).map(([label, href]) => (
-            <a
-              key={label}
-              href={href}
-              onClick={(e) => e.preventDefault()}
-              className="cursor-pointer text-[12.5px] font-medium text-foreground/90 transition-colors hover:text-white"
-            >
-              {label}
-            </a>
-          ))}
-        </nav>
-        {/* mobile: secondary button on the left (same pill style), opens the page links */}
-      <MobileMenu />
+      <PageMenu />
       {/* rotating single bloom, dead-center like the mock's wordmark */}
         <img
           src="/petal-flower.svg"
@@ -103,8 +86,12 @@ export default function Landing() {
 
       {/* hero */}
       <main className="relative z-10 flex flex-col items-center px-6 pb-16 pt-28 text-center md:pt-32">
-        <h1 className="text-[34px] font-medium leading-[1.15] tracking-[-0.015em] md:text-[38px]">Petals is for everyone</h1>
-        <button onClick={() => go('/projects')} className={pillLight + ' mt-7'}>
+        <h1 className="text-[34px] font-normal leading-[1.18] tracking-[-0.02em] md:text-[38px]">
+          Design, prototype, and ship,
+          <br />
+          <span className="text-[#8B8C8D]">all in your browser.</span>
+        </h1>
+        <button onClick={() => go('/projects')} className={pillHero + ' mt-7'}>
           Try out
           <Arrow />
         </button>

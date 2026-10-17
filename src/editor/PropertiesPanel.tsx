@@ -34,7 +34,7 @@ import { useDoc, type Tx } from '@/store/docStore'
 import { useUi, DEFAULT_CANVAS_BG, setZoomAroundCenter } from '@/store/uiStore'
 import { fileToImageSrc, addImageFile, alignSelection, canvasEl, nudge, setProps, type AlignEdge } from './commands'
 import { downloadSelectionCode, exportSelectionEPS, exportSelectionPNG, exportSelectionRaster, exportSelectionSVG } from './exporters'
-import { IconBlur, IconConic, IconGradientFill, IconImageFill, IconLinear, IconMargin, IconOpacity, IconRadial, IconRadius, IconRotate, IconSolidFill, IconSpread, IconStroke } from './proIcons'
+import { IconBlur, IconBrightness, IconContrast, IconConic, IconGradientFill, IconGrayscale, IconHue, IconImageFill, IconInvert, IconLinear, IconLetterSpacing, IconMargin, IconOpacity, IconRadial, IconRadius, IconRotate, IconSepia, IconSaturate, IconSolidFill, IconSpread, IconFontSize, IconLineHeight, IconStrokeWidth } from './proIcons'
 import { FontPicker, useGoogleFonts, type FontEntry } from './FontPicker'
 import { UndoRedoButtons } from './UndoRedoButtons'
 import { Button } from '@/components/ui/button'
@@ -1095,15 +1095,23 @@ function ShadowSection({ s, field, title }: { s: Shape; field: 'shadow' | 'inner
   )
 }
 
-const FILTER_KINDS: Array<{ key: keyof Filters; label: string; def: number; min: number; max: number; suffix: string }> = [
-  { key: 'blur', label: 'Blur', def: 8, min: 0, max: 64, suffix: 'px' },
-  { key: 'brightness', label: 'Brightness', def: 110, min: 0, max: 300, suffix: '%' },
-  { key: 'contrast', label: 'Contrast', def: 110, min: 0, max: 300, suffix: '%' },
-  { key: 'grayscale', label: 'Grayscale', def: 100, min: 0, max: 100, suffix: '%' },
-  { key: 'hueRotate', label: 'Hue rotation', def: 45, min: 0, max: 360, suffix: '°' },
-  { key: 'invert', label: 'Invert', def: 100, min: 0, max: 100, suffix: '%' },
-  { key: 'saturate', label: 'Saturate', def: 120, min: 0, max: 300, suffix: '%' },
-  { key: 'sepia', label: 'Sepia', def: 100, min: 0, max: 100, suffix: '%' },
+const FILTER_KINDS: Array<{
+  key: keyof Filters
+  label: string
+  icon: (p: { size?: number; className?: string }) => React.ReactElement
+  def: number
+  min: number
+  max: number
+  suffix: string
+}> = [
+  { key: 'blur', label: 'Blur', icon: IconBlur, def: 8, min: 0, max: 64, suffix: 'px' },
+  { key: 'brightness', label: 'Brightness', icon: IconBrightness, def: 110, min: 0, max: 300, suffix: '%' },
+  { key: 'contrast', label: 'Contrast', icon: IconContrast, def: 110, min: 0, max: 300, suffix: '%' },
+  { key: 'grayscale', label: 'Grayscale', icon: IconGrayscale, def: 100, min: 0, max: 100, suffix: '%' },
+  { key: 'hueRotate', label: 'Hue rotation', icon: IconHue, def: 45, min: 0, max: 360, suffix: '°' },
+  { key: 'invert', label: 'Invert', icon: IconInvert, def: 100, min: 0, max: 100, suffix: '%' },
+  { key: 'saturate', label: 'Saturate', icon: IconSaturate, def: 120, min: 0, max: 300, suffix: '%' },
+  { key: 'sepia', label: 'Sepia', icon: IconSepia, def: 100, min: 0, max: 100, suffix: '%' },
 ]
 
 /** Popover menu listing the filters the plus button can add. */
@@ -1137,8 +1145,11 @@ function FilterAddMenu({ s }: { s: Shape }) {
             <button
               key={k.key}
               onClick={() => add(k)}
-              className="block w-full cursor-pointer px-2.5 py-1.5 text-left text-[12px] font-medium text-foreground/90 hover:bg-accent"
+              className="flex w-full cursor-pointer items-center gap-2 px-2.5 py-1.5 text-left text-[12px] font-medium text-foreground/90 hover:bg-accent"
             >
+              <span className="text-muted-foreground/80">
+                <k.icon />
+              </span>
               {k.label}
             </button>
           ))}
@@ -1158,7 +1169,11 @@ function FiltersSection({ s }: { s: Shape }) {
       {has &&
         FILTER_KINDS.filter((k) => f[k.key] != null).map((k) => (
           <div key={k.key} className="flex items-center gap-1.5">
-            <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground/85">{k.label}</span>
+            <Hint label={k.label}>
+              <span className="flex shrink-0 cursor-default text-muted-foreground">
+                <k.icon />
+              </span>
+            </Hint>
             <NumField
               label={k.suffix}
               min={k.min}
@@ -1234,7 +1249,7 @@ function BorderSection({
     >
       <Row>
         <NumField
-          icon={<IconStroke />}
+          icon={<IconStrokeWidth />}
           min={1}
           value={s.strokeWidth ?? 1}
           onLive={(v) => live(s.id, { strokeWidth: Math.max(1, v) }, 'Stroke width')}
@@ -1319,7 +1334,7 @@ function TypographySection({
           onChange={(v) => commit({ fontWeight: Number(v) }, 'Font weight')}
         />
         <NumField
-          label="Size"
+          icon={<IconFontSize />}
           min={4}
           step={0.25}
           value={s.fontSize ?? 24}
@@ -1330,7 +1345,7 @@ function TypographySection({
       </Row>
       <Row>
         <NumField
-          label="LH"
+          icon={<IconLineHeight />}
           step={0.01}
           min={0.5}
           max={4}
@@ -1340,7 +1355,7 @@ function TypographySection({
           onCommit={(v) => commit({ lineHeight: clampF(v) }, 'Line height')}
         />
         <NumField
-          label="LS"
+          icon={<IconLetterSpacing />}
           step={0.1}
           min={-20}
           max={40}
