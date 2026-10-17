@@ -4,7 +4,7 @@ import type { Gradient, ImageFill, Shape } from '@/model/types'
 type ConicGrad = Omit<Gradient, 'type'> & { type: 'conic' }
 import { boundsOfRects, lineEnds, pageAABB, roundedRectPath, selectionRoots, subtreeIds } from '@/model/geometry'
 import type { Rect } from '@/model/geometry'
-import { cornersOf, filtersToCss, gradientVector, withAlpha } from '@/model/styles'
+import { cornersOf, fillToCss, filtersToCss, gradientVector, shadowToCss, withAlpha } from '@/model/styles'
 import { useDoc } from '@/store/docStore'
 import { useUi } from '@/store/uiStore'
 
@@ -175,12 +175,13 @@ function innerShadowStroke(ctx: CanvasRenderingContext2D, path: Path2D, s: Shape
   ctx.restore()
 }
 
-function applyRotation(ctx: CanvasRenderingContext2D, rotation: number | undefined, b: Rect) {
-  if (!rotation) return
+function applyRotation(ctx: CanvasRenderingContext2D, s: Shape, b: Rect) {
+  if (!s.rotation && !s.flipX && !s.flipY) return
   const cx = b.x + b.w / 2
   const cy = b.y + b.h / 2
   ctx.translate(cx, cy)
-  ctx.rotate((rotation * Math.PI) / 180)
+  if (s.rotation) ctx.rotate((s.rotation * Math.PI) / 180)
+  if (s.flipX || s.flipY) ctx.scale(s.flipX ? -1 : 1, s.flipY ? -1 : 1)
   ctx.translate(-cx, -cy)
 }
 
@@ -237,7 +238,7 @@ async function paintShape(
 
   if (s.type === 'frame') {
     const b = absBox(s, ox, oy)
-    applyRotation(ctx, s.rotation, b)
+    applyRotation(ctx, s, b)
     paintOuterShadow(ctx, s, b)
     const paint = canvasFill(ctx, s.fill, b)
     const path = shapePath(ctx, s, b)
@@ -261,7 +262,7 @@ async function paintShape(
 
   if (s.type === 'rect' || s.type === 'ellipse') {
     const b = absBox(s, ox, oy)
-    applyRotation(ctx, s.rotation, b)
+    applyRotation(ctx, s, b)
     paintOuterShadow(ctx, s, b)
     const path = shapePath(ctx, s, b)
     const paint = canvasFill(ctx, s.fill, b)
@@ -296,7 +297,7 @@ async function paintShape(
 
   if (s.type === 'image') {
     const b = absBox(s, ox, oy)
-    applyRotation(ctx, s.rotation, b)
+    applyRotation(ctx, s, b)
     paintOuterShadow(ctx, s, b)
     const path = shapePath(ctx, s, b)
     const src = s.src
@@ -314,7 +315,7 @@ async function paintShape(
 
   if (s.type === 'text') {
     const b = absBox(s, ox, oy)
-    applyRotation(ctx, s.rotation, b)
+    applyRotation(ctx, s, b)
     const fontSize = s.fontSize ?? 24
     const lh = fontSize * (s.lineHeight ?? 1.4)
     ctx.font = `${s.fontWeight ?? 500} ${fontSize}px ${s.fontFamily ?? UI_FONT}`
@@ -356,19 +357,20 @@ const RASTER: Record<string, string> = {
   avif: 'image/avif',
 }
 
-export async function exportSelectionRaster(format: 'png' | 'jpeg' | 'webp' | 'avif', scale = 2) {
+/** Render the current selection into an encoded raster Blob (null when nothing to export). */
+async function rasterBlob(format: 'png' | 'jpeg' | 'webp' | 'avif', scale = 2): Promise<Blob | null> {
   const snap = collectSelection()
-  if (!snap) return
+  if (!snap) return null
   const { nodes, roots } = snap
   const valid = flatSelection(snap)
   const b = boundsOfRects(valid.map((s) => pageAABB(nodes, s)))
-  if (!b || b.w <= 0 || b.h <= 0) return
+  if (!b || b.w <= 0 || b.h <= 0) return null
 
   const c = document.createElement('canvas')
   c.width = Math.max(1, Math.round(b.w * scale))
   c.height = Math.max(1, Math.round(b.h * scale))
   const ctx = c.getContext('2d')
-  if (!ctx) return
+  if (!ctx) return null
   ctx.scale(scale, scale)
   if (format === 'jpeg') {
     ctx.fillStyle = '#ffffff'
@@ -386,8 +388,16 @@ export async function exportSelectionRaster(format: 'png' | 'jpeg' | 'webp' | 'a
   }
 
   const blob = await new Promise<Blob | null>((res) => c.toBlob(res, RASTER[format], format === 'jpeg' ? 0.92 : undefined))
+  return blob
+}
+
+export async function exportSelectionRaster(format: 'png' | 'jpeg' | 'webp' | 'avif', scale = 2) {
+  const snap = collectSelection()
+  if (!snap) return
+  const name = sanitizeName(snap.nodes[snap.roots[0]]?.name, 'petals-export')
+  const blob = await rasterBlob(format, scale)
   if (!blob) return
-  download(blob, `${sanitizeName(nodes[roots[0]]?.name, 'petals-export')}.${format === 'jpeg' ? 'jpg' : format}`)
+  download(blob, `${name}.${format === 'jpeg' ? 'jpg' : format}`)
 }
 
 /* keep the old external name working */
@@ -396,6 +406,15 @@ export function exportSelectionPNG(scale = 2) {
 }
 
 /* ------------------------------ SVG ------------------------------ */
+
+function svgTransform(s: Shape, b: Rect): string {
+  const cx = b.x + b.w / 2
+  const cy = b.y + b.h / 2
+  const parts: string[] = []
+  if (s.flipX || s.flipY) parts.push(`translate(${fmt(cx)} ${fmt(cy)}) scale(${s.flipX ? -1 : 1} ${s.flipY ? -1 : 1}) translate(${fmt(-cx)} ${fmt(-cy)})`)
+  if (s.rotation) parts.push(`rotate(${s.rotation} ${fmt(cx)} ${fmt(cy)})`)
+  return parts.length ? ` transform="${parts.join(' ')}"` : ''
+}
 
 function esc(v: string): string {
   return v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -545,7 +564,7 @@ async function shapeToSvg(
     if (def) defs.push(def)
   }
   const styleAttr = svgStyleAttr(s)
-  const rot = s.rotation ? ` transform="rotate(${s.rotation} ${b.x + b.w / 2} ${b.y + b.h / 2})"` : ''
+  const rot = svgTransform(s, b)
 
   if (s.type === 'frame') {
     let clipAttr = ''
@@ -614,13 +633,14 @@ async function shapeToSvg(
   }
 }
 
-export async function exportSelectionSVG() {
+/** Build the SVG document of the selection (null when nothing to export). */
+export async function buildSelectionSVG(): Promise<string | null> {
   const snap = collectSelection()
-  if (!snap) return
+  if (!snap) return null
   const { nodes, roots } = snap
   const valid = flatSelection(snap)
   const b = boundsOfRects(valid.map((s) => pageAABB(nodes, s)))
-  if (!b || b.w <= 0 || b.h <= 0) return
+  if (!b || b.w <= 0 || b.h <= 0) return null
 
   const srcs = new Set(
     valid.flatMap((i) => [i.src, typeof i.fill === 'object' && i.fill.type === 'image' ? i.fill.src : undefined]).filter(Boolean) as string[],
@@ -634,9 +654,14 @@ export async function exportSelectionSVG() {
   const n = { i: 0 }
   for (const root of roots) await shapeToSvg(nodes, nodes[root], 0, 0, body, clips, defs, n, cache)
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(b.w)}" height="${Math.round(b.h)}" viewBox="${b.x} ${b.y} ${b.w} ${b.h}">${defs.join('')}${clips.join('')}${body.join('')}</svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(b.w)}" height="${Math.round(b.h)}" viewBox="${b.x} ${b.y} ${b.w} ${b.h}">${defs.join('')}${clips.join('')}${body.join('')}</svg>`
+}
 
-  download(new Blob([svg], { type: 'image/svg+xml' }), `${sanitizeName(nodes[roots[0]]?.name, 'petals-export')}.svg`)
+export async function exportSelectionSVG() {
+  const snap = collectSelection()
+  const svg = await buildSelectionSVG()
+  if (!svg || !snap) return
+  download(new Blob([svg], { type: 'image/svg+xml' }), `${sanitizeName(snap.nodes[snap.roots[0]]?.name, 'petals-export')}.svg`)
 }
 
 /* ------------------------------ EPS / AI ------------------------------ */
@@ -800,8 +825,11 @@ async function epsShape(
   if (!s.visible || s.opacity === 0) return
   const b = absBox(s, ox, oy)
   const rot = (body: string) =>
-    s.rotation
-      ? `gsave ${fmt(b.x + b.w / 2)} ${fmt(b.y + b.h / 2)} translate ${fmt(s.rotation)} rotate ${fmt(-(b.x + b.w / 2))} ${fmt(-(b.y + b.h / 2))} translate\n${body}\ngrestore\n`
+    s.rotation || s.flipX || s.flipY
+      ? `gsave ${fmt(b.x + b.w / 2)} ${fmt(b.y + b.h / 2)} translate` +
+        (s.rotation ? ` ${fmt(s.rotation)} rotate` : '') +
+        (s.flipX || s.flipY ? ` ${s.flipX ? -1 : 1} ${s.flipY ? -1 : 1} scale` : '') +
+        ` ${fmt(-(b.x + b.w / 2))} ${fmt(-(b.y + b.h / 2))} translate\n${body}\ngrestore\n`
       : body + '\n'
 
   const fill = s.fill
@@ -956,4 +984,221 @@ export async function exportSelectionEPS(asAI = false) {
   ].join('\n')
 
   download(new Blob([eps], { type: 'application/postscript' }), `${name}.${asAI ? 'ai' : 'eps'}`)
+}
+
+/* ------------------------------ React + Tailwind code export ------------------------------ */
+
+const CODE_FONT = "'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+
+/** Turn a shape name into a legal JSX component name (PascalCase, identifier-safe). */
+function pascalName(v: string | undefined): string {
+  const s = (v ?? '')
+    .trim()
+    .replace(/[^A-Za-z0-9]+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean)
+    .map((w) => w[0].toUpperCase() + w.slice(1))
+    .join('')
+  if (!s) return 'PetalsExport'
+  if (!/^[A-Za-z]/.test(s)) return `Petals${s}`
+  return s
+}
+
+const r1 = (v: number) => Math.round(v * 100) / 100
+
+/** Node + Tailwind builders produce "class list" plus extra inline style entries. */
+function tailwindFillClass(fill: Shape['fill']): string | null {
+  if (typeof fill === 'string') {
+    if (!fill || fill === 'transparent' || fill === 'none') return null
+    return `bg-[${fill.toLowerCase()}]`
+  }
+  return null
+}
+
+function tailwindGradientStyle(fill: Shape['fill']): string | null {
+  if (!fill || typeof fill === 'string' || fill.type === 'image') return null
+  const css = fillToCss(fill)
+  return css && css !== 'transparent' ? `background: '${css.replace(/'/g, "\\'")}'` : null
+}
+
+function codeBoxShadow(s: Shape): string | null {
+  const parts: string[] = []
+  const outer = shadowToCss(s.shadow)
+  if (outer) parts.push(outer)
+  const inner = shadowToCss(s.innerShadow, true)
+  if (inner) parts.push(inner)
+  return parts.length ? `boxShadow: '${parts.join(', ').replace(/'/g, "\\'")}'` : null
+}
+
+/** Emit JSX for one shape; ret = lines pushed with `ind` as base indentation. */
+function codeEmit(nodes: Record<string, Shape>, s: Shape, ox: number, oy: number, ind: string, lines: string[]) {
+  if (!s.visible || s.opacity === 0) return
+  const cls: string[] = ['absolute']
+  const css: string[] = []
+
+  // geometry: local coordinates after the container origin (ox/oy is page-space)
+  if (s.type === 'line') {
+    const e = lineEnds(s)
+    const len = Math.hypot(e.x2 - e.x1, e.y2 - e.y1) || 1
+    const angle = (Math.atan2(e.y2 - e.y1, e.x2 - e.x1) * 180) / Math.PI
+    cls.push(`left-[${r1(ox + e.x1)}px]`, `top-[${r1(oy + e.y1)}px]`)
+    cls.push(`h-[${r1(s.strokeWidth ?? 2)}px]`, `w-[${r1(len)}px]`, 'transform-gpu', 'origin-left')
+    cls.push(`rounded-full`)
+    if (angle) cls.push(`rotate-[${r1(angle)}deg]`)
+    if (s.stroke) cls.push(`bg-[${s.stroke.toLowerCase()}]`)
+  } else {
+    cls.push(`left-[${r1(ox + s.x)}px]`, `top-[${r1(oy + s.y)}px]`, `w-[${r1(s.w)}px]`, `h-[${r1(s.h)}px]`)
+    const radii = cornersOf(s)
+    const uniform = radii.every((v) => Math.abs(v - radii[0]) < 1e-6)
+    if (uniform) {
+      if (radii[0] > 0) cls.push(s.type === 'ellipse' ? 'rounded-full' : `rounded-[${r1(radii[0])}px]`)
+    } else {
+      css.push(
+        `borderRadius: '${r1(radii[0])}px ${r1(radii[1])}px ${r1(radii[2])}px ${r1(radii[3])}px'`,
+      )
+    }
+    const solid = tailwindFillClass(s.fill)
+    if (solid) cls.push(solid)
+    else if (s.type !== 'image') {
+      const grad = tailwindGradientStyle(s.fill)
+      if (grad) css.push(grad)
+    }
+    if (s.rotation) cls.push(`rotate-[${r1(s.rotation)}deg]`)
+    if (s.flipX || s.flipY) {
+      const sx = s.flipX ? -1 : 1
+      const sy = s.flipY ? -1 : 1
+      const scale = sx === sy ? `${sx}` : `${sx}, ${sy}`
+      css.push('transform: ' + (s.rotation ? `'scale(${scale}) rotate(${r1(s.rotation)}deg)'` : `'scale(${scale})'`))
+    }
+  }
+  if (s.opacity < 1) css.push(`opacity: ${r1(s.opacity)}`)
+  const shadow = codeBoxShadow(s)
+  if (shadow) css.push(shadow)
+  if (s.filters && Object.keys(s.filters).length) {
+    const f = filtersToCss(s.filters)
+    if (f) css.push(`filter: '${f.replace(/'/g, "\\'")}'`)
+  }
+  if (s.stroke && s.type !== 'line') css.push(`border: '${r1(s.strokeWidth ?? 1)}px solid ${s.stroke}'`)
+
+  const styleAttr = css.length ? ` style={{ ${css.join(', ')} }}` : ''
+  const open = (tag: string, extra = '') => `${ind}<${tag} className="${cls.join(' ')}"${extra}${styleAttr}`
+
+  if (s.type === 'frame') {
+    if (s.clip) cls.push('overflow-hidden')
+    const kids: string[] = []
+    for (const c of childrenSortedOf(nodes, s.id)) {
+      // children coordinates live in the frame's margin-inset content box
+      codeEmit(nodes, c, ox + s.x + (s.margin?.l ?? 0), oy + s.y + (s.margin?.t ?? 0), ind + '  ', kids)
+    }
+    if (!kids.length) {
+      lines.push(`${open('div')} />`)
+    } else {
+      lines.push(`${open('div')}>`)
+      lines.push(...kids)
+      lines.push(`${ind}</div>`)
+    }
+    return lines
+  }
+
+  if (s.type === 'image') {
+    const fit = (s.fit ?? 'cover') === 'contain' ? 'object-contain' : 'object-cover'
+    const all = cls.concat([fit])
+    lines.push(`${ind}<img className="${all.join(' ')}"${styleAttr} src="${(s.src ?? '').replace(/"/g, '&quot;')}" />`)
+    return lines
+  }
+  if (s.type === 'text') {
+    const fontSize = s.fontSize ?? 24
+    css.push(`fontSize: '${r1(fontSize)}px'`, `fontWeight: ${s.fontWeight ?? 500}`)
+    if (s.color) css.push(`color: '${s.color}'`)
+    if (s.lineHeight && s.lineHeight !== 1.4) css.push(`lineHeight: ${r1(s.lineHeight)}`)
+    if (s.letterSpacing) css.push(`letterSpacing: '${r1(s.letterSpacing)}px'`)
+    if (s.align && s.align !== 'left') css.push(`textAlign: '${s.align}'`)
+    css.push(`fontFamily: '${CODE_FONT}'`)
+    const styleAttrText = ` style={{ ${css.join(', ')} }}`
+    lines.push(
+      `${ind}<div className="${cls.join(' ')} whitespace-pre-wrap"${styleAttrText}>{${JSON.stringify(s.text ?? '')}}</div>`,
+    )
+    return lines
+  }
+
+  if (s.type === 'ellipse') {
+    lines.push(`${open('div')} />`)
+    return lines
+  }
+  // rect
+  lines.push(`${open('div')} />`)
+  return lines
+}
+
+/** React + Tailwind JSX for the current selection (frames as relative boxes, shapes as absolute children). */
+export function buildSelectionCode(): string | null {
+  const snap = collectSelection()
+  if (!snap) return null
+  const { nodes, roots } = snap
+  const valid = flatSelection(snap)
+  const b = boundsOfRects(valid.map((s) => pageAABB(nodes, s)))
+  if (!b || b.w <= 0 || b.h <= 0) return null
+  const name = pascalName(nodes[roots[0]]?.name)
+
+  const lines: string[] = []
+  lines.push('// Generated by Petals — paste into your React + Tailwind project.')
+  lines.push(`export default function ${name}() {`)
+  lines.push('  return (')
+  lines.push(`    <div className="relative w-[${r1(b.w)}px] h-[${r1(b.h)}px]">`)
+  for (const root of roots) codeEmit(nodes, nodes[root], -b.x, -b.y, '      ', lines)
+  lines.push('    </div>')
+  lines.push('  )')
+  lines.push('}')
+  return lines.join('\n') + '\n'
+}
+
+async function copyBlobToClipboard(blob: Blob): Promise<boolean> {
+  try {
+    await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })])
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Copy the selection as a PNG straight to the system clipboard (falls back to download). */
+export async function copySelectionPNG(scale = 2): Promise<void> {
+  const snap = collectSelection()
+  if (!snap) return
+  const name = sanitizeName(snap.nodes[snap.roots[0]]?.name, 'petals-export')
+  const blob = await rasterBlob('png', scale)
+  if (!blob) return
+  if (!(await copyBlobToClipboard(blob))) download(blob, `${name}.png`)
+}
+
+/** Copy the selection as an SVG document to the system clipboard (falls back to download). */
+export async function copySelectionSVG(): Promise<void> {
+  const svg = await buildSelectionSVG()
+  if (!svg) return
+  try {
+    await navigator.clipboard.writeText(svg)
+  } catch {
+    download(new Blob([svg], { type: 'image/svg+xml' }), 'petals-export.svg')
+  }
+}
+
+/** Download the React + Tailwind JSX of the selection as a .tsx file. */
+export function downloadSelectionCode(): void {
+  const code = buildSelectionCode()
+  if (!code) return
+  const snap = collectSelection()
+  const name = sanitizeName(snap?.nodes[snap.roots[0]]?.name, 'petals-export')
+  download(new Blob([code], { type: 'text/plain' }), `${name}.tsx`)
+}
+
+/** Copy the React + Tailwind JSX of the selection to the system clipboard (falls back to download). */
+export async function copySelectionCode(): Promise<void> {
+  const code = buildSelectionCode()
+  if (!code) return
+  try {
+    await navigator.clipboard.writeText(code)
+  } catch {
+    download(new Blob([code], { type: 'text/plain' }), 'petals-export.tsx')
+  }
 }

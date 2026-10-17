@@ -24,6 +24,7 @@ import {
 } from './commands'
 import { World } from './World'
 import { SelectionOverlay } from './SelectionOverlay'
+import { HoverMeasure } from './HoverMeasure'
 
 export function CanvasRoot() {
   const rootRef = useRef<HTMLDivElement>(null)
@@ -242,6 +243,7 @@ export function CanvasRoot() {
   return (
     <TooltipProvider>
       <div
+        data-canvas-root=""
         className="absolute inset-0 select-none overflow-hidden"
         ref={rootRef}
         style={{ background: canvasBg, cursor: cursorValue, touchAction: 'none' } as React.CSSProperties}
@@ -254,6 +256,7 @@ export function CanvasRoot() {
         </div>
         <div ref={overlayRef} className="absolute inset-0" style={{ transformOrigin: '0 0', pointerEvents: 'none' }}>
           <SelectionOverlay />
+          <HoverMeasure />
         </div>
         {empty && !gestureKind && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">

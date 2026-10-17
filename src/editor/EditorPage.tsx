@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { ChevronLeft, PanelLeft, PanelRight } from 'lucide-react'
 import { useDoc } from '@/store/docStore'
 import { useUi } from '@/store/uiStore'
@@ -10,10 +10,12 @@ import { LeftPanel } from './LeftPanel'
 import { PropertiesPanel } from './PropertiesPanel'
 import { CanvasRoot } from './CanvasRoot'
 import { UndoRedoButtons } from './UndoRedoButtons'
+import { CanvasContextMenu } from './ContextMenu'
 import { Hint } from '@/components/ui/tooltip'
 
 export default function EditorPage({ projectId }: { projectId: string }) {
   useKeyboard()
+  const mainRef = useRef<HTMLElement | null>(null)
   const showLeft = useUi((s) => s.showLeft)
   const showRight = useUi((s) => s.showRight)
 
@@ -26,9 +28,10 @@ export default function EditorPage({ projectId }: { projectId: string }) {
   return (
     <div className="flex h-full min-h-0">
       {showLeft && <LeftPanel projectId={projectId} />}
-      <main className="relative min-w-0 flex-1">
+      <main ref={mainRef} className="relative min-w-0 flex-1">
         <CanvasRoot />
         <Toolbar />
+        <CanvasContextMenu onClose={() => undefined} />
         {!showLeft && (
           <div className="absolute left-3 top-3 z-30 flex items-center gap-0.5 rounded-lg border border-border bg-popover/95 p-0.5 shadow-lg backdrop-blur">
             <Hint label="Back to projects">

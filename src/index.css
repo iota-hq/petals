@@ -120,3 +120,27 @@
 .scrollbar-thin::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* ultra-slim scrollbar for the right properties panel: invisible until you scroll,
+   fades out a moment after scrolling stops (class toggled in PanelScroll) */
+.scrollbar-auto {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.scrollbar-auto::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.scrollbar-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-auto::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+}
+.scrollbar-auto.is-scrolling {
+  scrollbar-color: #3f3f46 transparent;
+}
+.scrollbar-auto.is-scrolling::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+}

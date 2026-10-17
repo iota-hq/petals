@@ -146,3 +146,40 @@ export function IconStroke(p: P) {
     </svg>
   )
 }
+
+/** Linear gradient — two stops joined by a direction line (drawn in-house). */
+export function IconLinear(p: P) {
+  return svg(
+    '0 0 24 24',
+    <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M7.6 16.4 16.4 7.6" />
+      <circle cx="5.5" cy="18.5" r="2.5" fill="currentColor" stroke="none" />
+      <circle cx="18.5" cy="5.5" r="2.5" fill="currentColor" stroke="none" />
+    </g>,
+    p,
+  )
+}
+
+/** Radial gradient — solid core fading out in rings (drawn in-house). */
+export function IconRadial(p: P) {
+  return svg(
+    '0 0 24 24',
+    <g fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="8" />
+    </g>,
+    p,
+  )
+}
+
+/** Conic gradient — pie ring with one filled wedge sweeping from the center (drawn in-house). */
+export function IconConic(p: P) {
+  return svg(
+    '0 0 24 24',
+    <g fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 12 12 4 A8 8 0 0 1 18.9 8 Z" fill="currentColor" stroke="none" />
+    </g>,
+    p,
+  )
+}

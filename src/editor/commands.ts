@@ -8,6 +8,7 @@ import {
   lineEnds,
   normRect,
   offsetForParent,
+  ORDER_STEP,
   pageAABB,
   rectIntersect,
   selectionRoots,
@@ -101,17 +102,35 @@ export const FRAME_PRESETS = [
   { name: 'Tablet', w: 768, h: 1024 },
   { name: 'Laptop', w: 1280, h: 800 },
   { name: 'Desktop', w: 1440, h: 900 },
+  { name: 'Desktop 1080p', w: 1920, h: 1080 },
   { name: 'Square', w: 512, h: 512 },
 ] as const
 
-/** Insert a preset frame centered in the middle of the visible viewport. */
+/** Fit the camera so one shape is fully visible — zooms out for oversized frames, never zooms in past 100%. */
+export function fitShape(id: string) {
+  const nodes = useDoc.getState().nodes
+  const s = nodes[id]
+  const el = canvasEl.current
+  if (!s || !el) return
+  const b = pageAABB(nodes, s)
+  const pad = 72
+  const cw = el.clientWidth
+  const ch = el.clientHeight
+  const zoom = Math.min(1, Math.max(MIN_ZOOM, Math.min(cw / (b.w + pad * 2), ch / (b.h + pad * 2))))
+  useUi.setState({
+    camera: { x: (cw - b.w * zoom) / 2 - b.x * zoom, y: (ch - b.h * zoom) / 2 - b.y * zoom, zoom },
+  })
+}
+
+/** Insert a preset frame centered in the middle of the visible viewport, then fit it on screen. */
 export function addFramePreset(name: string, w: number, h: number) {
   const el = canvasEl.current
   if (!el) return
   const rect = el.getBoundingClientRect()
   const center = pageFromClient({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 })
   const suffix = uniqueName(useDoc.getState().nodes, 'frame')
-  addShapeAt('frame', { x: center.x - w / 2, y: center.y - h / 2, w, h }, name === 'Frame' ? suffix : suffix === 'Frame' ? name : `${name} · ${suffix.replace('Frame ', '')}`)
+  const id = addShapeAt('frame', { x: center.x - w / 2, y: center.y - h / 2, w, h }, name === 'Frame' ? suffix : suffix === 'Frame' ? name : `${name} · ${suffix.replace('Frame ', '')}`)
+  fitShape(id)
 }
 
 /* ============================== alignment ============================== */
@@ -314,6 +333,202 @@ export function duplicateSelection() {
   const clones = doc.duplicateForDrag(roots, 12, 12)
   doc.commitCreated(clones, 'Duplicate')
   useUi.setState({ selection: clones })
+}
+
+/* ============ layer ops — z order, flip, group, lock, visibility, rename ============ */
+
+/** Move the selection in front of (or behind) every sibling, preserving relative order. */
+function setSelectionOrder(mode: 'front' | 'back') {
+  const doc = useDoc.getState()
+  const roots = selectionRoots(doc.nodes, useUi.getState().selection)
+  if (!roots.length) return
+  const tx = doc.beginTx(mode === 'front' ? 'Bring to front' : 'Send to back')
+  for (const id of roots) tx.capture(id, { order: 0 })
+  doc.patchLive((n) => {
+    const visitedParents = new Set<string | null>()
+    for (const id of roots) {
+      const s = n[id]
+      if (!s) continue
+      const p = s.parentId ?? null
+      if (visitedParents.has(p)) continue
+      visitedParents.add(p)
+      const sibs = Object.values(n).filter((x) => (x.parentId ?? null) === p)
+      const group = roots.filter((r) => n[r] && (n[r].parentId ?? null) === p).sort((a, b) => n[a].order - n[b].order)
+      const base = mode === 'front' ? Math.max(...sibs.map((x) => x.order)) : Math.min(...sibs.map((x) => x.order))
+      const delta = mode === 'front' ? ORDER_STEP : -ORDER_STEP
+      for (const [k, rid] of group.entries()) n[rid].order = base + delta * (k + 1)
+    }
+  })
+  tx.commit()
+}
+
+export function bringToFront() {
+  setSelectionOrder('front')
+}
+export function sendToBack() {
+  setSelectionOrder('back')
+}
+
+/** Mirror the selection horizontally or vertically about its own center. */
+export function flipSelection(axis: 'x' | 'y') {
+  const doc = useDoc.getState()
+  const roots = selectionRoots(doc.nodes, useUi.getState().selection)
+  if (!roots.length) return
+  const tx = doc.beginTx(axis === 'x' ? 'Flip horizontal' : 'Flip vertical')
+  for (const id of roots) tx.capture(id, axis === 'x' ? { flipX: false } : { flipY: false })
+  doc.patchLive((n) => {
+    for (const id of roots) {
+      const s = n[id]
+      if (!s) continue
+      if (axis === 'x') s.flipX = !s.flipX
+      else s.flipY = !s.flipY
+    }
+  })
+  tx.commit()
+}
+
+/** Wrap same-parent selection roots in a new transparent frame placed above them. */
+export function groupSelection() {
+  const doc = useDoc.getState()
+  const nodes = doc.nodes
+  const roots = selectionRoots(nodes, useUi.getState().selection)
+  if (!roots.length) return
+  const first = nodes[roots[0]]
+  if (!first || !roots.every((id) => nodes[id]?.parentId === first.parentId)) return
+  const parentId = first.parentId
+  const b = boundsOfRects(roots.map((id) => pageAABB(nodes, nodes[id])))
+  if (!b) return
+  const local = { x: b.x - offsetForParent(nodes, parentId).x, y: b.y - offsetForParent(nodes, parentId).y }
+
+  // the group lives where the topmost selected item was, so stacking stays stable
+  const topOrder = Math.max(...roots.map((id) => nodes[id].order))
+  const frame = createShape({
+    type: 'frame',
+    name: 'Group',
+    parentId,
+    order: topOrder + ORDER_STEP,
+    x: local.x,
+    y: local.y,
+    w: b.w,
+    h: b.h,
+    fill: 'transparent',
+    clip: false,
+  })
+  const tx = doc.beginTx('Group')
+  tx.markCreated(frame.id)
+  for (const id of roots) tx.capture(id, { parentId: 0 as unknown as string, order: 0, x: 0, y: 0, x1: 0, y1: 0, x2: 0, y2: 0 })
+  doc.patchLive((n) => {
+    n[frame.id] = frame
+    // preserve stacking inside the group; keep each item's page position
+    const sorted = [...roots].sort((a, b2) => nodes[a].order - nodes[b2].order)
+    for (const [k, id] of sorted.entries()) {
+      const c = n[id]
+      if (!c) continue
+      if (c.type === 'line') {
+        c.x1 = (c.x1 ?? 0) - local.x
+        c.y1 = (c.y1 ?? 0) - local.y
+        c.x2 = (c.x2 ?? 0) - local.x
+        c.y2 = (c.y2 ?? 0) - local.y
+      } else {
+        c.x -= local.x
+        c.y -= local.y
+      }
+      c.parentId = frame.id
+      c.order = ORDER_STEP * (k + 1)
+    }
+  })
+  tx.commit()
+  useUi.setState({ selection: [frame.id] })
+}
+
+/** Serialize the selection subtree onto the internal clipboard. */
+export function copySelection(): boolean {
+  const doc = useDoc.getState()
+  const nodes = doc.nodes
+  const roots = selectionRoots(nodes, useUi.getState().selection)
+  if (!roots.length) return false
+  const payload: { roots: string[]; nodes: Record<string, Shape> } = { roots, nodes: {} }
+  for (const r of roots) {
+    for (const d of subtreeIds(nodes, [r])) {
+      const s = nodes[d]
+      if (s) payload.nodes[d] = structuredClone(s)
+    }
+  }
+  useUi.setState({ clipboard: JSON.stringify(payload) })
+  return true
+}
+
+/**
+ * Paste the internal clipboard: roots keep their parent when it still exists in the
+ * current project (otherwise they land on the page), shift 16px, stacked on top.
+ */
+export function pasteClipboard(): string[] {
+  const empty: string[] = []
+  const raw = useUi.getState().clipboard
+  if (!raw) return empty
+  let payload: { roots?: string[]; nodes?: Record<string, Shape> }
+  try {
+    payload = JSON.parse(raw)
+  } catch {
+    return empty
+  }
+  const entries = Object.entries(payload.nodes ?? {})
+  if (!entries.length) return empty
+  const fresh: Shape[] = []
+  const idMap = new Map<string, string>()
+  for (const [oldId] of entries) idMap.set(oldId, nanoid(8))
+  const validRoots = payload.roots?.filter((r) => idMap.has(r)) ?? []
+  if (!validRoots.length) return empty
+
+  const doc = useDoc.getState()
+  const cur = doc.nodes
+  const rootSet = new Set(validRoots)
+  // roots stack above everything in their new parent, payload order preserved
+  const orderBases = new Map<string | null, number>()
+  const rootIds: string[] = []
+  for (const [oldId, orig] of entries) {
+    const c = structuredClone(orig)
+    c.id = idMap.get(oldId)!
+    if (orig.parentId && idMap.has(orig.parentId)) c.parentId = idMap.get(orig.parentId)!
+    else if (orig.parentId && cur[orig.parentId]) c.parentId = orig.parentId
+    else c.parentId = null
+    if (rootSet.has(oldId)) {
+      const base = orderBases.get(c.parentId) ?? topOrderFor(cur, c.parentId) + 1024
+      orderBases.set(c.parentId, base + ORDER_STEP)
+      c.order = base
+      c.x += 16
+      c.y += 16
+      rootIds.push(c.id)
+    }
+    fresh.push(c)
+  }
+  doc.insertShapes(fresh, 'Paste')
+  useUi.setState({ selection: rootIds })
+  return rootIds
+}
+
+/** Hide / show the selection (roots only). */
+export function setSelectionVisible(v: boolean) {
+  const doc = useDoc.getState()
+  const roots = selectionRoots(doc.nodes, useUi.getState().selection)
+  if (!roots.length) return
+  setProps(roots, { visible: v }, v ? 'Show' : 'Hide')
+}
+
+/** Lock / unlock the selection (roots only). */
+export function setSelectionLocked(locked: boolean) {
+  const doc = useDoc.getState()
+  const roots = selectionRoots(doc.nodes, useUi.getState().selection)
+  if (!roots.length) return
+  setProps(roots, { locked }, locked ? 'Lock' : 'Unlock')
+}
+
+/** Ask the layers panel to open its inline rename for the first selected root. */
+export function requestRenameSelection() {
+  const doc = useDoc.getState()
+  const roots = selectionRoots(doc.nodes, useUi.getState().selection)
+  if (!roots.length) return
+  useUi.getState().setRenameRequest(roots[0])
 }
 
 export function nudge(dx: number, dy: number) {

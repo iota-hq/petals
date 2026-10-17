@@ -33,8 +33,8 @@ import { fillToCss, radiusToCss } from '@/model/styles'
 import { useDoc, type Tx } from '@/store/docStore'
 import { useUi, DEFAULT_CANVAS_BG, setZoomAroundCenter } from '@/store/uiStore'
 import { fileToImageSrc, addImageFile, alignSelection, canvasEl, nudge, setProps, type AlignEdge } from './commands'
-import { exportSelectionEPS, exportSelectionPNG, exportSelectionRaster, exportSelectionSVG } from './exporters'
-import { IconBlur, IconGradientFill, IconImageFill, IconMargin, IconOpacity, IconRadius, IconRotate, IconSolidFill, IconSpread, IconStroke } from './proIcons'
+import { downloadSelectionCode, exportSelectionEPS, exportSelectionPNG, exportSelectionRaster, exportSelectionSVG } from './exporters'
+import { IconBlur, IconConic, IconGradientFill, IconImageFill, IconLinear, IconMargin, IconOpacity, IconRadial, IconRadius, IconRotate, IconSolidFill, IconSpread, IconStroke } from './proIcons'
 import { UndoRedoButtons } from './UndoRedoButtons'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -43,7 +43,25 @@ import { Hint, TooltipProvider } from '@/components/ui/tooltip'
 /* ------------------------------ shells ------------------------------ */
 
 const panelCls =
-  'flex w-[264px] shrink-0 flex-col overflow-y-auto border-l border-border bg-[#1c1c1c] scrollbar-thin'
+  'flex w-[264px] shrink-0 flex-col overflow-hidden border-l border-border bg-[#1c1c1c]'
+
+/** Ultra-slim scrollbar that fades out shortly after scrolling stops; body may scroll, the top bar stays fixed. */
+function PanelScroll({ children }: { children: ReactNode }) {
+  const timer = useRef<number>(0)
+  return (
+    <div
+      className="min-h-0 flex-1 overflow-y-auto scrollbar-auto"
+      onScroll={(e) => {
+        const el = e.currentTarget
+        el.classList.add('is-scrolling')
+        window.clearTimeout(timer.current)
+        timer.current = window.setTimeout(() => el.classList.remove('is-scrolling'), 800)
+      }}
+    >
+      {children}
+    </div>
+  )
+}
 
 /**
  * Collapsible properties section. Exactly one indicator lives in the header:
@@ -51,6 +69,7 @@ const panelCls =
  * - addable sections (onAdd/onRemove): the same slot is + when the content is absent
  *   and − when present (adds/removes), so a section never shows two icons.
  * - addSlot replaces the indicator entirely (e.g. the filters "+ filter" menu).
+ * Closed sections sit closer together so the stack scans quickly.
  */
 function Section({
   title,
@@ -114,8 +133,8 @@ function Section({
   }
 
   return (
-    <section className="border-b border-border px-3.5 py-3">
-      <div className="mb-2 flex min-h-6 items-center justify-between gap-1">
+    <section className={(open ? 'px-3.5 py-3' : 'px-3.5 py-2') + ' border-b border-border'}>
+      <div className={(open ? 'mb-2 ' : '') + 'flex min-h-5 items-center justify-between gap-1'}>
         <button
           onClick={toggle}
           className="flex min-w-0 cursor-pointer items-baseline gap-1.5 text-left"
@@ -454,11 +473,14 @@ function ColorBoxRow({
   value,
   onApply,
   onRemove,
+  selected,
 }: {
   value?: string
   /** live-applied paint color, 6 or 8 digit hex */
   onApply: (c: string) => void
   onRemove?: () => void
+  /** highlight as the active gradient stop */
+  selected?: boolean
 }) {
   const pop = useColorPop(value ?? 'transparent')
   const hex6 = value && /^#[0-9a-fA-F]{6}/.test(value) ? value.slice(0, 7) : undefined
@@ -473,7 +495,7 @@ function ColorBoxRow({
         }}
         className={
           'relative flex h-7 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-lg bg-[#2b2b2b] px-1.5 ' +
-          (pop.open ? 'ring-1 ring-ring' : '')
+          (pop.open || selected ? 'ring-1 ring-ring' : '')
         }
       >
         <ColorButton sm color={hasColor ? (hex6 ?? value!) : 'transparent'} onClick={(e) => pop.toggle(e)} />
@@ -688,7 +710,7 @@ function Seg<T extends string>({
           title={titles?.[m]}
           onClick={() => onChange(m)}
           className={
-            'flex flex-1 cursor-pointer items-center justify-center gap-1 rounded-md px-2 py-1 text-[12px] font-medium transition-colors ' +
+            'flex flex-1 cursor-pointer items-center justify-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors ' +
             (value === m ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-accent hover:text-foreground')
           }
         >
@@ -746,7 +768,7 @@ function GradientBar({
   return (
     <div
       ref={barRef}
-      className="relative h-5 cursor-pointer overflow-visible rounded-md ring-1 ring-inset ring-black/20"
+      className="relative h-3.5 cursor-pointer overflow-visible rounded-md ring-1 ring-inset ring-black/20"
       style={{ background: displayFill }}
       onPointerDown={(e) => {
         // click on the empty bar adds a stop there
@@ -766,7 +788,7 @@ function GradientBar({
           }}
           aria-label={`Gradient stop ${i + 1}`}
           className={
-            'absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 cursor-pointer rounded-full border-2 shadow ' +
+            'absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 cursor-pointer rounded-full border-2 shadow ' +
             (selected === i ? 'border-primary' : 'border-white/90')
           }
           style={{ left: `${st.pos}%` }}
@@ -821,6 +843,21 @@ function FillField({ s }: { s: Shape }) {
     live(s.id, { fill: { ...g, ...patch } } as ShapePatch, 'Gradient')
   }
 
+  /** Insert a new stop at `pos` (percent) and select it. */
+  const addStopAt = (pos: number) => {
+    if (!g) return
+    const stops = [...g.stops, { color: '#808080', alpha: 1, pos }].sort((a, b) => a.pos - b.pos)
+    setSel(Math.max(0, stops.findIndex((st) => st.pos === pos)))
+    patchG({ stops }, 'Add gradient stop')
+  }
+  /** Delete stop `i` (minimum of two stops is kept). */
+  const removeStopAt = (i: number) => {
+    if (!g || g.stops.length <= 2) return
+    const stops = g.stops.filter((_, j) => j !== i)
+    setSel((v) => Math.max(0, Math.min(v, stops.length - 1)))
+    patchG({ stops }, 'Remove gradient stop')
+  }
+
   const chooseImage = () => {
     const input = document.createElement('input')
     input.type = 'file'
@@ -867,54 +904,47 @@ function FillField({ s }: { s: Shape }) {
             <Seg
               options={
                 [
-                  ['linear', 'Linear'],
-                  ['radial', 'Radial'],
-                  ['conic', 'Conic'],
+                  ['linear', <IconLinear size={12} />],
+                  ['radial', <IconRadial size={12} />],
+                  ['conic', <IconConic size={12} />],
                 ] as const
               }
+              titles={{ linear: 'Linear', radial: 'Radial', conic: 'Conic' }}
               value={g.type}
               onChange={(t) => patchG({ type: t }, 'Gradient type')}
             />
-          </Row>
-          <Row>
-            {g.stops.map((st, i) => (
-              <SwatchButton
-                key={i}
-                color={st.color}
-                onChange={(c) => patchG({ stops: g.stops.map((s2, j) => (j === i ? { ...s2, color: c } : s2)) }, 'Gradient stop')}
-              />
-            ))}
-            <div className="flex-1" />
             <Hint label="Add stop">
               <button
-                className="cursor-pointer text-muted-foreground hover:text-foreground"
-                onClick={() => {
-                  const stops = [...g.stops, { color: '#808080', alpha: 1, pos: 50 }].sort((a, b) => a.pos - b.pos)
-                  setSel(g.stops.length)
-                  patchG({ stops }, 'Add gradient stop')
-                }}
+                className="cursor-pointer px-1 text-muted-foreground hover:text-foreground"
+                onClick={() => addStopAt(50)}
               >
                 <Plus size={13} />
               </button>
             </Hint>
-            <Hint label="Remove stop">
-              <button
-                disabled={g.stops.length <= 2}
-                className={
-                  'cursor-pointer ' +
-                  (g.stops.length > 2 ? 'text-muted-foreground hover:text-foreground' : 'text-muted-foreground/30')
-                }
-                onClick={() => {
-                  if (g.stops.length <= 2) return
-                  const stops = g.stops.filter((_, j) => j !== Math.min(sel, g.stops.length - 1))
-                  setSel((i2) => Math.max(0, Math.min(i2, stops.length - 1)))
-                  patchG({ stops }, 'Remove gradient stop')
-                }}
-              >
-                <RemoveIcon size={13} />
-              </button>
-            </Hint>
           </Row>
+          {/* stops as color rows: swatch · hex · alpha % — like the canvas color fields */}
+          <div className="flex flex-col gap-1" onPointerDownCapture={() => setSel(Math.min(sel, g.stops.length - 1))}>
+            {g.stops.map((st, i) => (
+              <ColorBoxRow
+                key={i}
+                selected={i === Math.min(sel, g.stops.length - 1)}
+                value={st.color + (st.alpha < 1 ? Math.round(st.alpha * 255).toString(16).padStart(2, '0') : '')}
+                onApply={(c) => {
+                  const m = /^#([0-9a-fA-F]{6})([0-9a-fA-F]{2})?$/.exec(c)
+                  if (!m) return
+                  patchG(
+                    {
+                      stops: g.stops.map((s2, j) =>
+                        j === i ? { ...s2, color: `#${m[1]}`, alpha: m[2] ? parseInt(m[2], 16) / 255 : 1 } : s2,
+                      ),
+                    },
+                    'Gradient stop',
+                  )
+                }}
+                onRemove={g.stops.length > 2 ? () => removeStopAt(i) : undefined}
+              />
+            ))}
+          </div>
           {g.stops[Math.min(sel, g.stops.length - 1)] && (() => {
             const i = Math.min(sel, g.stops.length - 1)
             const st = g.stops[i]
@@ -1461,12 +1491,14 @@ export function PropertiesPanel() {
     return (
       <aside className={panelCls + ' hidden lg:flex'}>
         <PanelTop />
-        <div className="border-b border-border px-3 py-2.5">
-          <h3 className="text-[11px] text-muted-foreground">Page</h3>
-        </div>
-        <Section title="Canvas">
-          <CanvasBgField />
-        </Section>
+        <PanelScroll>
+          <div className="border-b border-border px-3 py-2.5">
+            <h3 className="text-[11px] text-muted-foreground">Page</h3>
+          </div>
+          <Section title="Canvas">
+            <CanvasBgField />
+          </Section>
+        </PanelScroll>
       </aside>
     )
   }
@@ -1509,6 +1541,7 @@ export function PropertiesPanel() {
       <TooltipProvider>
         <aside className={panelCls + ' hidden lg:flex'}>
           <PanelTop />
+          <PanelScroll>
           {header('rect')}
           <Section title="Align">
             <AlignRow />
@@ -1554,6 +1587,7 @@ export function PropertiesPanel() {
             </Row>
           </Section>
           <Section title="Export" addSlot={<ExportMenu />} />
+          </PanelScroll>
         </aside>
       </TooltipProvider>
     )
@@ -1567,6 +1601,7 @@ export function PropertiesPanel() {
     <TooltipProvider>
       <aside className={panelCls + ' hidden lg:flex'}>
         <PanelTop />
+        <PanelScroll>
         {header(s.type, s)}
 
         {!isLine && (
@@ -1727,6 +1762,7 @@ export function PropertiesPanel() {
         )}
 
         <Section title="Export" addSlot={<ExportMenu />} />
+        </PanelScroll>
       </aside>
     </TooltipProvider>
   )
@@ -1743,6 +1779,7 @@ function ExportMenu() {
     ['SVG', 'Vector', () => void exportSelectionSVG()],
     ['EPS', 'Vector · PostScript', () => void exportSelectionEPS(false)],
     ['AI', 'Vector · Illustrator', () => void exportSelectionEPS(true)],
+    ['TSX', 'React + Tailwind code', () => downloadSelectionCode()],
   ]
   return (
     <div className="relative">

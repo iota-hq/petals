@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, memo, useRef } from 'react'
 import type { Shape } from '@/model/types'
 import { lineEnds, lineBox } from '@/model/geometry'
-import { filtersToCss, fillToCss, radiusToCss, rotationToCss, shadowToCss } from '@/model/styles'
+import { filtersToCss, fillToCss, radiusToCss, shapeTransform, shadowToCss } from '@/model/styles'
 import { useDoc } from '@/store/docStore'
 import { useUi } from '@/store/uiStore'
 import { commitTextEdit, setIntrinsicHeight, typeLive } from './commands'
@@ -51,7 +51,7 @@ export const ShapeNode = memo(
               background: fillToCss(s.fill),
               borderRadius: radiusToCss(s),
               opacity: s.opacity,
-              transform: rotationToCss(s.rotation),
+              transform: shapeTransform(s),
               boxShadow: boxShadowOf(s),
               filter: filtersToCss(s.filters),
               border: s.stroke ? `${s.strokeWidth ?? 1}px solid ${s.stroke}` : undefined,
@@ -71,7 +71,7 @@ export const ShapeNode = memo(
               background: fillToCss(s.fill),
               borderRadius: '50%',
               opacity: s.opacity,
-              transform: rotationToCss(s.rotation),
+              transform: shapeTransform(s),
               boxShadow: boxShadowOf(s),
               filter: filtersToCss(s.filters),
               border: s.stroke ? `${s.strokeWidth ?? 1}px solid ${s.stroke}` : undefined,
@@ -94,7 +94,7 @@ export const ShapeNode = memo(
               objectFit: s.fit ?? 'cover',
               borderRadius: radiusToCss(s),
               opacity: s.opacity,
-              transform: rotationToCss(s.rotation),
+              transform: shapeTransform(s),
               boxShadow: boxShadowOf(s),
               filter: filtersToCss(s.filters),
             }}
@@ -125,7 +125,7 @@ function FrameView({ s, group }: { s: Shape; group: GroupMap }) {
         width: s.w,
         height: s.h,
         opacity: s.opacity,
-        transform: rotationToCss(s.rotation),
+        transform: shapeTransform(s),
         filter: filtersToCss(s.filters),
       }}
     >
@@ -276,7 +276,7 @@ function TextView({ s }: { s: Shape }) {
         whiteSpace: 'pre-wrap',
         wordBreak: 'break-word',
         position: 'absolute',
-        transform: rotationToCss(s.rotation),
+        transform: shapeTransform(s),
         filter:
           [filtersToCss(s.filters), s.shadow ? `drop-shadow(${s.shadow.x}px ${s.shadow.y}px ${s.shadow.blur}px ${s.shadow.color})` : '']
             .filter(Boolean)

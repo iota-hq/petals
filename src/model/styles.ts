@@ -93,6 +93,14 @@ export function rotationToCss(rotation: number | undefined): string | undefined 
   return rotation ? `rotate(${rotation}deg)` : undefined
 }
 
+/** Rotation + mirror flips about the shape center → CSS transform string. */
+export function shapeTransform(s: Pick<Shape, 'rotation' | 'flipX' | 'flipY'>): string | undefined {
+  const parts: string[] = []
+  if (s.flipX || s.flipY) parts.push(`scale(${s.flipX ? -1 : 1}, ${s.flipY ? -1 : 1})`)
+  if (s.rotation) parts.push(`rotate(${s.rotation}deg)`)
+  return parts.length ? parts.join(' ') : undefined
+}
+
 /* -------------------------------------------------- radii -------------------------------------------------- */
 
 const R4 = [0, 0, 0, 0] as [number, number, number, number]

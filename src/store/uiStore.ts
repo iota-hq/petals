@@ -59,6 +59,10 @@ interface UiState {
   showRight: boolean
   /** Editor canvas background (page color behind everything). */
   canvasBg: string
+  /** Serialized copied shapes (see copySelection) — the app's internal clipboard. */
+  clipboard: string | null
+  /** When set, the layers panel opens the row's inline rename (context-menu "Rename"). */
+  renameRequest: string | null
 
   setTool: (t: Tool) => void
   setCamera: (c: Camera) => void
@@ -73,6 +77,7 @@ interface UiState {
   setEditingText: (id: string | null) => void
   togglePanel: (side: 'left' | 'right') => void
   setCanvasBg: (v: string) => void
+  setRenameRequest: (id: string | null) => void
 }
 
 export const DEFAULT_CANVAS_BG = '#404040'
@@ -97,6 +102,8 @@ export const useUi = create<UiState>((set) => ({
   showLeft: true,
   showRight: true,
   canvasBg: initialCanvasBg(),
+  clipboard: null,
+  renameRequest: null,
 
   setTool: (tool) => set({ tool }),
   setCamera: (camera) => set({ camera }),
@@ -126,6 +133,7 @@ export const useUi = create<UiState>((set) => ({
     }
     set({ canvasBg })
   },
+  setRenameRequest: (renameRequest) => set({ renameRequest }),
 }))
 
 /** Pointer-centered zoom, clamped. rect = canvas element rect at event time. */

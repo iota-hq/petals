@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ChevronLeft, Circle, Eye, EyeOff, Frame, Image as ImageIcon, Lock, LockOpen, Minus, PanelLeft, Plus, Square, SquareDashed, Type } from 'lucide-react'
 import type { Shape, ShapeType } from '@/model/types'
 import { childrenSorted, subtreeIds, topOrderFor, ORDER_STEP } from '@/model/geometry'
@@ -7,7 +7,6 @@ import { useUi } from '@/store/uiStore'
 import { useProjects } from '@/store/projectsStore'
 import { setProps } from './commands'
 import { go } from '@/App'
-import PetalMark from '@/components/PetalMark'
 import { Hint, TooltipProvider } from '@/components/ui/tooltip'
 
 const typeIcon: Record<ShapeType, typeof Square> = {
@@ -52,6 +51,15 @@ export function LeftPanel({ projectId }: { projectId: string }) {
   const editingText = useUi((s) => s.editingText)
   const projectName = useProjects((s) => s.projects.find((p) => p.id === projectId)?.name ?? 'Untitled')
   const [renaming, setRenaming] = useState(false)
+  const renameRequest = useUi((s) => s.renameRequest)
+
+  // context-menu "Rename": open the selected layer's inline rename
+  useEffect(() => {
+    if (renameRequest) {
+      setEditing(renameRequest)
+      useUi.getState().setRenameRequest(null)
+    }
+  }, [renameRequest])
 
   const [drag, setDrag] = useState<{ id: string } | null>(null)
   const [hover, setHover] = useState<{ id: string; zone: 'above' | 'below' | 'in' } | null>(null)
@@ -129,25 +137,16 @@ export function LeftPanel({ projectId }: { projectId: string }) {
   return (
     <TooltipProvider>
       <aside className="flex min-h-0 w-60 shrink-0 flex-col border-r border-border bg-[#1c1c1c]">
-        {/* file header: panel toggle · back · identity · name */}
-        <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-2">
-          <Hint label="Hide layers panel">
-            <button
-              className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-              onClick={() => useUi.getState().togglePanel('left')}
-            >
-              <PanelLeft size={14} />
-            </button>
-          </Hint>
+        {/* file header: back · project name · panel toggle */}
+        <div className="flex h-10 shrink-0 items-center gap-0.5 border-b border-border px-2">
           <Hint label="Back to projects">
             <button
-              className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+              className="group flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
               onClick={() => go('/projects')}
             >
-              <ChevronLeft size={14} />
+              <ChevronLeft size={14} className="transition-transform duration-150 group-hover:-translate-x-0.5" />
             </button>
           </Hint>
-          <PetalMark size={15} />
           {renaming ? (
             <input
               autoFocus
@@ -165,12 +164,20 @@ export function LeftPanel({ projectId }: { projectId: string }) {
             />
           ) : (
             <button
-              className="min-w-0 flex-1 truncate rounded-md px-1.5 py-0.5 text-left text-[13px] font-medium hover:bg-accent"
+              className="min-w-0 flex-1 cursor-pointer truncate rounded-md px-1.5 py-0.5 text-left text-[13px] font-medium hover:bg-accent"
               onClick={() => setRenaming(true)}
             >
               {projectName}
             </button>
           )}
+          <Hint label="Hide layers panel">
+            <button
+              className="flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+              onClick={() => useUi.getState().togglePanel('left')}
+            >
+              <PanelLeft size={14} />
+            </button>
+          </Hint>
         </div>
 
         {/* Pages */}

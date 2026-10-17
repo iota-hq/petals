@@ -82,6 +82,9 @@ export interface Shape {
   // rect / ellipse / image / frame
   fill?: string | Gradient | ImageFill
   rotation?: number
+  /** mirror the shape horizontally / vertically about its center */
+  flipX?: boolean
+  flipY?: boolean
   radius?: number
   radii?: CornerRadii
   // rect / frame

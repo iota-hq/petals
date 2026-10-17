@@ -4,10 +4,12 @@ import { useUi, zoomAt } from '@/store/uiStore'
 import { canvasEl } from './view'
 import {
   cancelGesture,
+  copySelection,
   deleteSelection,
   duplicateSelection,
   fitAll,
   nudge,
+  pasteClipboard,
   redo,
   resetZoom100,
   selectAllTop,
@@ -61,6 +63,14 @@ export function useKeyboard() {
           case 'd':
             e.preventDefault()
             duplicateSelection()
+            return
+          case 'c':
+            e.preventDefault()
+            copySelection()
+            return
+          case 'v':
+            e.preventDefault()
+            pasteClipboard()
             return
           case 'a': {
             e.preventDefault()

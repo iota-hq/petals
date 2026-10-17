@@ -55,6 +55,8 @@ const nodeSchema = z.object({
   locked: z.boolean(),
   fill: z.union([z.string(), gradientSchema, imageFillSchema]).optional(),
   rotation: z.number().optional(),
+  flipX: z.boolean().optional(),
+  flipY: z.boolean().optional(),
   radius: z.number().optional(),
   radii: radiiSchema.optional(),
   clip: z.boolean().optional(),
