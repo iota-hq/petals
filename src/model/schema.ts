@@ -4,6 +4,7 @@ const shadowSchema = z.object({
   x: z.number(),
   y: z.number(),
   blur: z.number(),
+  spread: z.number().optional(),
   color: z.string(),
 })
 
@@ -14,7 +15,7 @@ const gradientStopSchema = z.object({
 })
 
 const gradientSchema = z.object({
-  type: z.enum(['linear', 'radial']),
+  type: z.enum(['linear', 'radial', 'conic']),
   angle: z.number(),
   stops: z.array(gradientStopSchema),
 })
@@ -71,9 +72,10 @@ const nodeSchema = z.object({
   fontSize: z.number().optional(),
   fontWeight: z.number().optional(),
   fontFamily: z.string().optional(),
-  align: z.enum(['left', 'center', 'right']).optional(),
+  align: z.enum(['left', 'center', 'right', 'justify']).optional(),
   color: z.string().optional(),
   lineHeight: z.number().optional(),
+  letterSpacing: z.number().optional(),
   src: z.string().optional(),
   fit: z.enum(['cover', 'contain']).optional(),
 })

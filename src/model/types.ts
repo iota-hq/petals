@@ -1,5 +1,5 @@
 export type ShapeType = 'frame' | 'rect' | 'ellipse' | 'line' | 'text' | 'image'
-export type Align = 'left' | 'center' | 'right'
+export type Align = 'left' | 'center' | 'right' | 'justify'
 export type Fit = 'cover' | 'contain'
 
 /** One gradient color stop. pos is 0..100 along the gradient axis. */
@@ -10,8 +10,8 @@ export interface GradientStop {
 }
 
 export interface Gradient {
-  type: 'linear' | 'radial'
-  /** degrees, CSS conventions: 0 = bottom→top, 90 = left→right */
+  type: 'linear' | 'radial' | 'conic'
+  /** degrees, CSS conventions: 0 = bottom→top (linear) / sweep-origin rotation (conic) */
   angle: number
   stops: GradientStop[]
 }
@@ -35,6 +35,8 @@ export interface ShadowStyle {
   x: number
   y: number
   blur: number
+  /** expansion of the shadow silhouette in px (CSS box-shadow spread) */
+  spread?: number
   color: string
 }
 
@@ -105,6 +107,7 @@ export interface Shape {
   align?: Align
   color?: string
   lineHeight?: number
+  letterSpacing?: number
   // image
   src?: string
   fit?: Fit

@@ -1,4 +1,7 @@
-import type { ImageFill, Shape } from '@/model/types'
+import type { Gradient, ImageFill, Shape } from '@/model/types'
+
+/** Gradient narrowed to conic (Grad['type'] is itself a union, so plain Extract won't do). */
+type ConicGrad = Omit<Gradient, 'type'> & { type: 'conic' }
 import { boundsOfRects, lineEnds, pageAABB, roundedRectPath, selectionRoots, subtreeIds } from '@/model/geometry'
 import type { Rect } from '@/model/geometry'
 import { cornersOf, filtersToCss, gradientVector, withAlpha } from '@/model/styles'
@@ -90,15 +93,26 @@ function canvasFill(ctx: CanvasRenderingContext2D, fill: Shape['fill'], b: Rect)
   if (fill.type === 'image') return null // image paints are drawn as clipped bitmaps
   const stops = fill.stops
   if (!stops.length) return null
+  const sorted = stops.slice().sort((a, b2) => a.pos - b2.pos)
+  const paint = (grad: CanvasGradient) => {
+    for (const st of sorted) grad.addColorStop(Math.min(1, Math.max(0, st.pos / 100)), withAlpha(st.color, st.alpha))
+    return grad
+  }
+  if (fill.type === 'conic') {
+    if (typeof ctx.createConicGradient === 'function') {
+      const grad = ctx.createConicGradient((fill.angle * Math.PI) / 180, b.x + b.w / 2, b.y + b.h / 2)
+      return paint(grad)
+    }
+    // fallback: radial
+    const grad = ctx.createRadialGradient(b.x + b.w / 2, b.y + b.h / 2, 0, b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h) / 2)
+    return paint(grad)
+  }
   const v = gradientVector(fill.angle, b.w, b.h)
   const grad =
     fill.type === 'radial'
       ? ctx.createRadialGradient(b.x + b.w / 2, b.y + b.h / 2, 0, b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h) / 2)
       : ctx.createLinearGradient(b.x + v.x0, b.y + v.y0, b.x + v.x1, b.y + v.y1)
-  for (const st of stops.slice().sort((a, b2) => a.pos - b2.pos)) {
-    grad.addColorStop(Math.min(1, Math.max(0, st.pos / 100)), withAlpha(st.color, st.alpha))
-  }
-  return grad
+  return paint(grad)
 }
 
 function shapePath(ctx: CanvasRenderingContext2D, s: Shape, b: Rect): Path2D {
@@ -111,8 +125,8 @@ function shapePath(ctx: CanvasRenderingContext2D, s: Shape, b: Rect): Path2D {
   return p
 }
 
-/** css filter expressions incl. an outer drop-shadow, for canvas ctx.filter and SVG style. */
-function cssFilterChain(s: Shape): string {
+/** css filter expressions for SVG style (outer shadow via drop-shadow; spread unsupported there). */
+function svgFilterChain(s: Shape): string {
   const parts: string[] = []
   const chain = filtersToCss(s.filters)
   if (chain) parts.push(chain)
@@ -121,10 +135,34 @@ function cssFilterChain(s: Shape): string {
   return parts.join(' ')
 }
 
+/** outer shadow as a blurred, expanded silhouette (canvas; supports spread). */
+function paintOuterShadow(ctx: CanvasRenderingContext2D, s: Shape, b: Rect) {
+  const sh = s.shadow
+  if (!sh) return
+  ctx.save()
+  ctx.filter = `blur(${Math.max(0.01, sh.blur / 2)}px)`
+  ctx.fillStyle = sh.color
+  ctx.translate(sh.x, sh.y)
+  ctx.fill(expandPath(s, b, sh.spread ?? 0))
+  ctx.restore()
+}
+
+function expandPath(s: Shape, b: Rect, spread: number): Path2D {
+  const e = new Path2D()
+  if (s.type === 'ellipse') {
+    e.ellipse(b.x + b.w / 2, b.y + b.h / 2, Math.max(0.5, b.w / 2 + spread), Math.max(0.5, b.h / 2 + spread), 0, 0, Math.PI * 2)
+  } else {
+    const corners = cornersOf(s).map((c) => Math.max(0, c + spread)) as [number, number, number, number]
+    e.roundRect(b.x - spread, b.y - spread, b.w + spread * 2, b.h + spread * 2, corners)
+  }
+  return e
+}
+
 /** Emulates an inner shadow inside the shape by stroking a wide transparent line under a clip. */
 function innerShadowStroke(ctx: CanvasRenderingContext2D, path: Path2D, s: Shape) {
   const sh = s.innerShadow
   if (!sh) return
+  const spread = sh.spread ?? 0
   ctx.save()
   ctx.clip(path)
   ctx.shadowColor = sh.color
@@ -132,7 +170,7 @@ function innerShadowStroke(ctx: CanvasRenderingContext2D, path: Path2D, s: Shape
   ctx.shadowOffsetY = sh.y
   ctx.shadowBlur = sh.blur
   ctx.strokeStyle = 'rgba(0,0,0,0)'
-  ctx.lineWidth = sh.blur * 2
+  ctx.lineWidth = Math.max(1, sh.blur * 2 + spread * 2)
   ctx.stroke(path)
   ctx.restore()
 }
@@ -195,11 +233,12 @@ async function paintShape(
   if (!s.visible || s.opacity === 0) return
   ctx.save()
   ctx.globalAlpha = s.opacity
-  ctx.filter = cssFilterChain(s) || 'none'
+  ctx.filter = filtersToCss(s.filters) || 'none'
 
   if (s.type === 'frame') {
     const b = absBox(s, ox, oy)
     applyRotation(ctx, s.rotation, b)
+    paintOuterShadow(ctx, s, b)
     const paint = canvasFill(ctx, s.fill, b)
     const path = shapePath(ctx, s, b)
     if (paint) {
@@ -223,6 +262,7 @@ async function paintShape(
   if (s.type === 'rect' || s.type === 'ellipse') {
     const b = absBox(s, ox, oy)
     applyRotation(ctx, s.rotation, b)
+    paintOuterShadow(ctx, s, b)
     const path = shapePath(ctx, s, b)
     const paint = canvasFill(ctx, s.fill, b)
     if (paint) {
@@ -257,6 +297,7 @@ async function paintShape(
   if (s.type === 'image') {
     const b = absBox(s, ox, oy)
     applyRotation(ctx, s.rotation, b)
+    paintOuterShadow(ctx, s, b)
     const path = shapePath(ctx, s, b)
     const src = s.src
     const img = src ? (cache.get(src) ?? (await loadImage(src).then((i) => (cache.set(src, i), i)))) : null
@@ -277,6 +318,8 @@ async function paintShape(
     const fontSize = s.fontSize ?? 24
     const lh = fontSize * (s.lineHeight ?? 1.4)
     ctx.font = `${s.fontWeight ?? 500} ${fontSize}px ${s.fontFamily ?? UI_FONT}`
+    if (s.letterSpacing) ctx.letterSpacing = `${s.letterSpacing}px`
+    if (s.shadow) ctx.filter = [filtersToCss(s.filters) ?? '', `drop-shadow(${s.shadow.x}px ${s.shadow.y}px ${s.shadow.blur}px ${s.shadow.color})`].join(' ').trim()
     ctx.fillStyle = s.color ?? '#ececf1'
     ctx.textBaseline = 'top'
     const wrapped: string[] = []
@@ -359,7 +402,7 @@ function esc(v: string): string {
 }
 
 function gradientDefs(fill: Exclude<Shape['fill'], undefined>, idPrefix: string): string {
-  if (typeof fill === 'string' || fill.type === 'image' || !fill.stops.length) return ''
+  if (typeof fill === 'string' || fill.type === 'image' || fill.type === 'conic' || !fill.stops.length) return ''
   const v = gradientVector(fill.angle, 1, 1)
   const stops = fill.stops
     .slice()
@@ -375,12 +418,70 @@ function gradientDefs(fill: Exclude<Shape['fill'], undefined>, idPrefix: string)
 function svgFillAttr(fill: Shape['fill'], id: string): string {
   if (!fill) return ' fill="none"'
   if (typeof fill === 'string') return fill !== 'transparent' ? ` fill="${fill}"` : ' fill="none"'
-  if (fill.type === 'image') return ' fill="none"'
+  if (fill.type === 'image' || fill.type === 'conic') return ' fill="none"'
   return ` fill="url(#${id})"`
 }
 
+/* ---- conic gradient: SVG has no conic primitive, so emit a clipped wedge fan ---- */
+
+function hexLerp(a: string, b: string, t: number): [number, number, number] {
+  const pa = parseInt(a.replace('#', '').slice(0, 6), 16) || 0
+  const pb = parseInt(b.replace('#', '').slice(0, 6), 16) || 0
+  const l = (x: number, y: number) => Math.round(x + (y - x) * t)
+  return [l((pa >> 16) & 255, (pb >> 16) & 255), l((pa >> 8) & 255, (pb >> 8) & 255), l(pa & 255, pb & 255)]
+}
+
+function conicAt(fill: ConicGrad, t: number): { c: string; alpha: number; opacity: number } {
+  const stops = fill.stops.slice().sort((a, b) => a.pos - b.pos)
+  const p = Math.min(100, Math.max(0, t * 100))
+  let i = 0
+  while (i < stops.length - 1 && stops[i + 1].pos < p) i++
+  const a = stops[Math.min(i, stops.length - 1)]
+  const b = stops[Math.min(i + 1, stops.length - 1)]
+  const span = b.pos - a.pos || 1
+  const local = (p - a.pos) / span
+  const rgb = hexLerp(a.color, b.color, local)
+  const alpha = a.alpha + (b.alpha - a.alpha) * local
+  void alpha
+  return { c: `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`, alpha: 1, opacity: alpha }
+}
+
+function svgConicWedges(
+  fill: ConicGrad,
+  s: Shape,
+  b: Rect,
+  clips: string[],
+  out: string[],
+  n: { i: number },
+) {
+  if (!fill.stops.length) return
+  const id = `c${n.i++}`
+  const path = s.type === 'ellipse'
+    ? `M${b.x} ${b.y + b.h / 2}A${b.w / 2} ${b.h / 2} 0 1 0 ${b.x + b.w} ${b.y + b.h / 2}A${b.w / 2} ${b.h / 2} 0 1 0 ${b.x} ${b.y + b.h / 2}Z`
+    : roundedRectPath(b, cornersOf(s))
+  clips.push(`<clipPath id="${id}"><path d="${path}"/></clipPath>`)
+  const cx = b.x + b.w / 2
+  const cy = b.y + b.h / 2
+  const R = Math.hypot(b.w / 2, b.h / 2) + 1
+  const N = 48
+  const start = -Math.PI / 2 + (fill.angle * Math.PI) / 180
+  const segs: string[] = []
+  for (let k = 0; k < N; k++) {
+    const t0 = k / N
+    const t1 = (k + 1) / N
+    const a0 = start + t0 * Math.PI * 2
+    const a1 = start + t1 * Math.PI * 2
+    const p0 = `${fmt(cx + R * Math.cos(a0))} ${fmt(cy + R * Math.sin(a0))}`
+    const p1 = `${fmt(cx + R * Math.cos(a1))} ${fmt(cy + R * Math.sin(a1))}`
+    const st = conicAt(fill, (t0 + t1) / 2)
+    const large = t1 - t0 > 0.5 ? 1 : 0
+    segs.push(`<path d="M${fmt(cx)} ${fmt(cy)}L${p0}A${fmt(R)} ${fmt(R)} 0 ${large} 1 ${p1}Z" fill="${st.c}" fill-opacity="${fmt(st.opacity)}"/>`)
+  }
+  out.push(`<g clip-path="url(#${id})">${segs.join('')}</g>`)
+}
+
 function svgStyleAttr(s: Shape): string {
-  const f = cssFilterChain(s)
+  const f = svgFilterChain(s)
   return f ? ` style="filter:${esc(f)}"` : ''
 }
 
@@ -417,6 +518,11 @@ function imageEl(src: string, b: Rect, fit: 'cover' | 'contain' | undefined): st
   return `<image x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" preserveAspectRatio="${fit === 'contain' ? 'xMidYMid meet' : 'xMidYMid slice'}" href="${esc(src).replace(/\n/g, '')}"/>`
 }
 
+/** Emits the wedge fan for conic fills (SVG has no conic primitive). */
+function svgConicFill(s: Shape, b: Rect, clips: string[], out: string[], n: { i: number }) {
+  if (typeof s.fill === 'object' && s.fill.type === 'conic') svgConicWedges(s.fill as ConicGrad, s, b, clips, out, n)
+}
+
 async function shapeToSvg(
   nodes: Record<string, Shape>,
   s: Shape,
@@ -451,6 +557,7 @@ async function shapeToSvg(
     }
     const attrs = `${svgFillAttr(s.fill, gradId!)}${stroke}${op}${rot}${styleAttr}`
     out.push(svgShapeEl(s, b, attrs))
+    svgConicFill(s, b, clips, out, n)
     if (await svgImageFills(s, b, cache, clips, out, n)) {
       // image paint replaces nothing else
     }
@@ -469,10 +576,12 @@ async function shapeToSvg(
 
   if (s.type === 'rect') {
     out.push(svgShapeEl(s, b, `${svgFillAttr(s.fill, gradId!)}${stroke}${op}${rot}${styleAttr}`))
+    svgConicFill(s, b, clips, out, n)
     return
   }
   if (s.type === 'ellipse') {
     out.push(svgShapeEl(s, b, `${svgFillAttr(s.fill, gradId!)}${stroke}${op}${rot}${styleAttr}`))
+    svgConicFill(s, b, clips, out, n)
     return
   }
   if (s.type === 'line') {
@@ -499,7 +608,7 @@ async function shapeToSvg(
       .map((line, i) => `<tspan x="${tx}" y="${b.y + i * lh + fontSize * 0.82}">${esc(line)}</tspan>`)
       .join('')
     out.push(
-      `<text font-family="${esc(family)}" font-size="${fontSize}" font-weight="${s.fontWeight ?? 500}" text-anchor="${anchor}" fill="${esc(s.color ?? '#ececf1')}"${op}${rot}${styleAttr}>${tspans}</text>`,
+      `<text font-family="${esc(family)}" font-size="${fontSize}" font-weight="${s.fontWeight ?? 500}"${s.letterSpacing ? ` letter-spacing="${s.letterSpacing}"` : ''} text-anchor="${anchor}" fill="${esc(s.color ?? '#ececf1')}"${op}${rot}${styleAttr}>${tspans}</text>`,
     )
     return
   }
@@ -624,11 +733,13 @@ function rgbHexForImage(
   return { hex: hex + '\n>\n', w: canvas.width, h: canvas.height }
 }
 
+const hex2 = (v: number) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, '0').toUpperCase()
+
 function epsGradientShade(
   fill: Exclude<Shape['fill'], undefined>,
   b: Rect,
 ): string | null {
-  if (typeof fill === 'string' || fill.type === 'image' || fill.stops.length < 2) return null
+  if (typeof fill === 'string' || fill.type === 'image' || fill.type === 'conic' || fill.stops.length < 2) return null
   const stops = fill.stops.slice().sort((a, b2) => a.pos - b2.pos)
   const funcs = stops.slice(0, -1).map((st, i) => {
     const c0 = rgbParts(st.color) ?? ['0', '0', '0']
@@ -737,8 +848,24 @@ async function epsShape(
   if (paintsFill) {
     if (solid) body += `gsave ${epsSetColor(solid)} fill grestore\n`
     if (grad) {
-      const shade = epsGradientShade(grad, b)
-      if (shade) body += `gsave clip ${shade} grestore\n`
+      if (grad.type === 'conic') {
+        // EPS has no conic primitive: approximate with the average stop color
+        const stops = grad.stops
+        if (stops.length) {
+          const n = stops.length
+          const avg = stops.reduce(
+            (acc, st) => {
+              const h = (parseInt(st.color.replace('#', ''), 16) || 0) & 0xffffff
+              return { r: acc.r + ((h >> 16) & 255) / n, g: acc.g + ((h >> 8) & 255) / n, b: acc.b + (h & 255) / n }
+            },
+            { r: 0, g: 0, b: 0 },
+          )
+          body += `gsave clip ${epsSetColor(`#${hex2(avg.r)}${hex2(avg.g)}${hex2(avg.b)}`)} fill grestore\n`
+        }
+      } else {
+        const shade = epsGradientShade(grad, b)
+        if (shade) body += `gsave clip ${shade} grestore\n`
+      }
     }
     if (imagePaint) body += epsImageOp(imagePaint.src, imagePaint.fit, b)
     if (s.type === 'image' && s.src) body += epsImageOp(s.src, s.fit, b)

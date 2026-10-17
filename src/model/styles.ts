@@ -47,6 +47,7 @@ export function fillToCss(fill: Shape['fill']): string {
     .map((s) => `${withAlpha(s.color, s.alpha)} ${clampTo(s.pos, 0, 100)}%`)
     .join(', ')
   if (fill.type === 'radial') return `radial-gradient(circle at 50% 50%, ${parts})`
+  if (fill.type === 'conic') return `conic-gradient(from ${clampTo(fill.angle, -360, 360)}deg at 50% 50%, ${parts})`
   return `linear-gradient(${fill.angle}deg, ${parts})`
 }
 
@@ -67,7 +68,8 @@ export function gradientVector(angleDeg: number, w: number, h: number) {
 
 export function shadowToCss(sh: ShadowStyle | undefined, inset = false): string | undefined {
   if (!sh) return undefined
-  return `${inset ? 'inset ' : ''}${sh.x}px ${sh.y}px ${sh.blur}px ${sh.color}`
+  const spread = sh.spread ? `${sh.spread}px` : undefined
+  return `${inset ? 'inset ' : ''}${sh.x}px ${sh.y}px ${sh.blur}px${spread ? ` ${spread}` : ''} ${sh.color}`
 }
 
 /* -------------------------------------------------- filters -------------------------------------------------- */

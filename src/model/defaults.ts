@@ -70,7 +70,7 @@ export function normalizeShape(raw: unknown): Shape | null {
   // pass through optional fields that exist
   for (const key of ['fill', 'radius', 'radii', 'clip', 'x1', 'y1', 'x2', 'y2', 'stroke', 'strokeWidth',
     'rotation', 'shadow', 'innerShadow', 'filters', 'margin',
-    'text', 'fontSize', 'fontWeight', 'fontFamily', 'align', 'color', 'lineHeight', 'src', 'fit'] as const) {
+    'text', 'fontSize', 'fontWeight', 'fontFamily', 'align', 'color', 'lineHeight', 'letterSpacing', 'src', 'fit'] as const) {
     const v = r[key]
     if (v !== undefined) (shape as unknown as Record<string, unknown>)[key] = v
   }

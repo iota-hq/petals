@@ -5,8 +5,14 @@ import {
   AlignCenterVertical,
   AlignEndHorizontal,
   AlignEndVertical,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  AlignJustify,
   AlignStartHorizontal,
   AlignStartVertical,
+  Check,
+  ChevronDown,
   Circle,
   Expand,
   Frame as FrameIcon,
@@ -39,8 +45,11 @@ const panelCls =
   'flex w-[264px] shrink-0 flex-col overflow-y-auto border-l border-border bg-[#1c1c1c] scrollbar-thin'
 
 /**
- * Collapsible properties section. The right-side indicator is a minus when open and a
- * plus when closed; sections with addable content (e.g. shadows) use it to add/remove.
+ * Collapsible properties section. Exactly one indicator lives in the header:
+ * - plain sections: − when open / + when closed (click collapses).
+ * - addable sections (onAdd/onRemove): the same slot is + when the content is absent
+ *   and − when present (adds/removes), so a section never shows two icons.
+ * - addSlot replaces the indicator entirely (e.g. the filters "+ filter" menu).
  */
 function Section({
   title,
@@ -54,28 +63,53 @@ function Section({
 }: {
   title: string
   subtitle?: string
-  children: ReactNode
+  children?: ReactNode
   addSlot?: ReactNode
   onAdd?: () => void
   onRemove?: () => void
-  /** force open/closed for addable-style sections; undefined = self-managed collapse */
+  /** force presence of content (addable style); undefined = self-managed collapse */
   open?: boolean
   defaultOpen?: boolean
 }) {
   const [openState, setOpenState] = useState(defaultOpen)
-  const collapsible = openProp === undefined
-  const open = collapsible ? openState : openProp
+  const [collapsed, setCollapsed] = useState(false)
+  const addable = openProp !== undefined || onAdd || onRemove
+  const open = addable ? !!openProp && !collapsed : openState
 
   const toggle = () => {
-    if (!collapsible) return
-    setOpenState((o) => !o)
+    if (addable) setCollapsed((c) => !c)
+    else setOpenState((o) => !o)
   }
-  const onIndicator = () => {
-    if (!collapsible) {
-      if (!openProp && onAdd) onAdd()
-      return
+
+  let indicator: ReactNode = null
+  if (!addSlot) {
+    if (addable) {
+      if (openProp) {
+        indicator = (
+          <Hint label="Remove">
+            <button onClick={onRemove} className="cursor-pointer text-muted-foreground hover:text-foreground">
+              <Minus size={13} />
+            </button>
+          </Hint>
+        )
+      } else {
+        indicator = (
+          <Hint label="Add">
+            <button onClick={onAdd} className="cursor-pointer text-muted-foreground hover:text-foreground">
+              <Plus size={13} />
+            </button>
+          </Hint>
+        )
+      }
+    } else {
+      indicator = (
+        <Hint label={open ? 'Collapse' : 'Expand'}>
+          <button onClick={toggle} className="cursor-pointer text-muted-foreground hover:text-foreground">
+            {open ? <Minus size={13} /> : <Plus size={13} />}
+          </button>
+        </Hint>
+      )
     }
-    toggle()
   }
 
   return (
@@ -91,25 +125,10 @@ function Section({
         </button>
         <div className="flex shrink-0 items-center gap-1">
           {addSlot}
-          <Hint label={open ? 'Collapse' : 'Expand'}>
-            <button
-              onClick={onIndicator}
-              className="cursor-pointer text-muted-foreground hover:text-foreground"
-              aria-label={open ? 'Collapse section' : 'Expand section'}
-            >
-              {open ? <Minus size={13} /> : <Plus size={13} />}
-            </button>
-          </Hint>
-          {!collapsible && openProp && onRemove && (
-            <Hint label="Remove">
-              <button onClick={onRemove} className="cursor-pointer text-muted-foreground hover:text-foreground">
-                <RemoveIcon size={13} />
-              </button>
-            </Hint>
-          )}
+          {indicator}
         </div>
       </div>
-      {open && <div className="space-y-1.5">{children}</div>}
+      {(!addable ? openState : open) && <div className="space-y-1.5">{children}</div>}
     </section>
   )
 }
@@ -173,6 +192,8 @@ interface NumFieldProps {
   min?: number
   max?: number
   disabled?: boolean
+  /** no own box chrome — render inside a parent box (e.g. the color row) */
+  plain?: boolean
   onLive?: (stored: number) => void
   onEnd?: () => void
   onCommit: (stored: number) => void
@@ -184,7 +205,19 @@ const clampField = (v: number, min?: number, max?: number) => {
   return v
 }
 
-function NumField({ label, value, scale = 1, step = 1, min, max, disabled, onLive, onEnd, onCommit }: NumFieldProps) {
+function NumField({
+  label,
+  value,
+  scale = 1,
+  step = 1,
+  min,
+  max,
+  disabled,
+  plain,
+  onLive,
+  onEnd,
+  onCommit,
+}: NumFieldProps) {
   const [editing, setEditing] = useState<string | null>(null)
   const [live, setLive] = useState<number | null>(null)
   const shown = live ?? value
@@ -217,7 +250,13 @@ function NumField({ label, value, scale = 1, step = 1, min, max, disabled, onLiv
   }
 
   return (
-    <label className="flex min-w-0 flex-1 items-center gap-1 rounded-md border border-transparent bg-background/40 px-1.5 py-0.5 transition-colors hover:border-border focus-within:border-ring">
+    <label
+      className={
+        plain
+          ? 'flex min-w-0 flex-1 items-center gap-1'
+          : 'flex min-w-0 flex-1 items-center gap-1 rounded-md border border-transparent bg-[#2b2b2b] px-1.5 py-0.5 transition-colors hover:border-border focus-within:border-ring'
+      }
+    >
       <span
         className={
           'shrink-0 select-none text-center text-[11px] ' +
@@ -260,11 +299,14 @@ function NumField({ label, value, scale = 1, step = 1, min, max, disabled, onLiv
 
 /* ------------------------------ color ------------------------------ */
 
-function ColorButton({ color, onClick }: { color: string; onClick: () => void }) {
+function ColorButton({ color, onClick, sm }: { color: string; onClick: (e: React.MouseEvent) => void; sm?: boolean }) {
   return (
     <button
       onClick={onClick}
-      className="h-6 w-8 shrink-0 cursor-pointer rounded-md border border-border ring-1 ring-inset ring-black/20"
+      className={
+        (sm ? 'h-4 w-5 rounded' : 'h-6 w-8 shrink-0 rounded-md') +
+        ' shrink-0 cursor-pointer border border-border ring-1 ring-inset ring-black/20'
+      }
       style={{
         background:
           color === 'transparent' || color === 'none'
@@ -275,7 +317,7 @@ function ColorButton({ color, onClick }: { color: string; onClick: () => void })
   )
 }
 
-/** Close popovers on outside pointerdown / Escape. */
+/** Close popovers on outside pointerdown / Escape / scroll (fixed popovers detach on scroll). */
 function usePopoverDismiss(ref: React.RefObject<HTMLElement | null>, onClose: () => void, active: boolean) {
   useEffect(() => {
     if (!active) return
@@ -285,13 +327,39 @@ function usePopoverDismiss(ref: React.RefObject<HTMLElement | null>, onClose: ()
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
+    const onScroll = () => onClose()
     window.addEventListener('pointerdown', onDown, true)
     window.addEventListener('keydown', onKey)
+    window.addEventListener('scroll', onScroll, true)
     return () => {
       window.removeEventListener('pointerdown', onDown, true)
       window.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', onScroll, true)
     }
   }, [active])
+}
+
+/** Fixed-position popover state anchored under the triggering element (never clipped by the panel). */
+function usePopFixed() {
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState({ top: 0, left: 0 })
+  const ref = useRef<HTMLDivElement | null>(null)
+  const toggle = (e: React.MouseEvent) => {
+    if (open) {
+      setOpen(false)
+      return
+    }
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const width = 192
+    const height = 246
+    setPos({
+      top: r.bottom + height > window.innerHeight ? Math.max(8, r.top - height) : r.bottom + 6,
+      left: Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8)),
+    })
+    setOpen(true)
+  }
+  usePopoverDismiss(ref, () => setOpen(false), open)
+  return { open, toggle, setOpen, pos, ref }
 }
 
 const hexDisplay = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/
@@ -300,11 +368,13 @@ const hexShort = /^#([0-9a-fA-F]{6})$/
 /** Small color popover: picker + hex field, no buttons — clicking outside closes and commits. */
 function ColorPopover({
   popoverRef,
+  pos,
   onPick,
   hex,
   setHex,
 }: {
   popoverRef: React.RefObject<HTMLDivElement | null>
+  pos: { top: number; left: number }
   onPick: (hex: string) => void
   hex: string
   setHex: (h: string) => void
@@ -312,14 +382,15 @@ function ColorPopover({
   return (
     <div
       ref={popoverRef}
-      className="absolute right-0 top-full z-40 mt-1.5 w-[190px] rounded-xl border border-border bg-popover/95 p-2 shadow-2xl backdrop-blur"
+      style={{ top: pos.top, left: pos.left }}
+      className="fixed z-50 w-[192px] rounded-xl border border-border bg-popover/95 p-2 shadow-2xl backdrop-blur"
       onPointerDown={(e) => e.stopPropagation()}
     >
       <HexColorPicker color={hex} onChange={onPick} />
       <div className="mt-2 flex items-center justify-between gap-1.5">
         <span className="text-[10px] font-normal text-muted-foreground">Hex</span>
         <Input
-          className="h-6 w-24 bg-background/40 font-mono text-[11px] uppercase"
+          className="h-6 w-24 bg-[#2b2b2b] font-mono text-[11px] uppercase"
           value={hex}
           onChange={(e) => setHex(e.target.value)}
           onBlur={() => {
@@ -338,97 +409,209 @@ function hexInTrim(v: string): string {
   return v.startsWith('#') ? v : v ? '#' + v : v
 }
 
-/** Shared popover state for one color control: outside-click + Escape close it. */
+/** Popover + hex state for one color control; the popover anchors to the element you click. */
 function useColorPop(value: string) {
-  const [open, setOpen] = useState(false)
+  const pop = usePopFixed()
   const [hex, setHex] = useState('#ffffff')
-  const ref = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
-    if (!open) setHex(hexDisplay.test(value) ? value.slice(0, 7) : '#ffffff')
-  }, [value, open])
-  usePopoverDismiss(ref, () => setOpen(false), open)
-  return { open, setOpen, hex, setHex, ref }
+    if (!pop.open) setHex(hexDisplay.test(value) ? value.slice(0, 7) : '#ffffff')
+  }, [value, pop.open])
+  return { ...pop, hex, setHex }
+}
+
+/* ---- the boxed color row: [swatch | hex | alpha %] in one box, minus outside ---- */
+
+const alphaOf = (v?: string) => (v && /^#[0-9a-fA-F]{8}$/.test(v) ? parseInt(v.slice(7, 9), 16) / 255 : 1)
+/** Compose a displayable color: 8-digit hex only when alpha < 100%. */
+const withAlphaHex = (hex6: string, a: number) => {
+  const byte = Math.round(Math.min(1, Math.max(0, a)) * 255)
+  const suffix = byte.toString(16).padStart(2, '0')
+  return suffix === 'ff' ? hex6 : hex6 + suffix
+}
+/** Keep a paint's existing alpha (8-digit suffix) when a new base color is picked. */
+const keepAlpha = (v: string | undefined, newBase: string) => {
+  const suffix = v && /^#[0-9a-fA-F]{8}$/.test(v) ? v.slice(7) : ''
+  return suffix ? newBase + suffix : newBase
+}
+
+function ColorBoxRow({
+  value,
+  onApply,
+  onRemove,
+}: {
+  value?: string
+  /** live-applied paint color, 6 or 8 digit hex */
+  onApply: (c: string) => void
+  onRemove?: () => void
+}) {
+  const pop = useColorPop(value ?? 'transparent')
+  const hex6 = value && /^#[0-9a-fA-F]{6}/.test(value) ? value.slice(0, 7) : undefined
+  const hasColor = !!value && value !== 'transparent' && value !== 'none'
+  return (
+    <div className="flex items-center gap-1.5">
+      <div
+        role="button"
+        onClick={(e) => {
+          if ((e.target as HTMLElement).closest('input,label')) return
+          pop.toggle(e)
+        }}
+        className={
+          'relative flex h-7 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-lg bg-[#2b2b2b] px-1.5 ' +
+          (pop.open ? 'ring-1 ring-ring' : '')
+        }
+      >
+        <ColorButton sm color={hasColor ? (hex6 ?? value!) : 'transparent'} onClick={(e) => pop.toggle(e)} />
+        <span className="font-mono text-[12px] uppercase text-foreground/85">{hasColor ? (hex6 ?? '').replace('#', '') : ''}</span>
+        <div className="ml-auto flex w-12 min-w-0 items-center" onClick={(e) => e.stopPropagation()}>
+          <NumField
+            plain
+            label="%"
+            scale={100}
+            step={0.01}
+            min={0}
+            max={1}
+            disabled={!hex6 || !onApply}
+            value={alphaOf(hex6 ? value : undefined)}
+            onLive={hex6 ? (v) => onApply(withAlphaHex(hex6, v)) : undefined}
+            onCommit={hex6 ? (v) => onApply(withAlphaHex(hex6, v)) : () => {}}
+          />
+        </div>
+        {pop.open && (
+          <ColorPopover
+            popoverRef={pop.ref}
+            pos={pop.pos}
+            onPick={(c) => onApply(keepAlpha(value, c))}
+            hex={pop.hex}
+            setHex={pop.setHex}
+          />
+        )}
+      </div>
+      {onRemove && (
+        <Hint label="Remove color">
+          <button className="cursor-pointer text-muted-foreground hover:text-foreground" onClick={onRemove}>
+            <Minus size={13} />
+          </button>
+        </Hint>
+      )}
+    </div>
+  )
 }
 
 function ColorField({
   shapeId,
   field,
-  label,
+  txLabel,
   value,
   noneable,
 }: {
   shapeId: string
   field: 'fill' | 'stroke' | 'color'
-  label: string
+  txLabel: string
   value?: string
   noneable?: boolean
 }) {
-  const pop = useColorPop(value ?? 'transparent')
   const txRef = useRef<Tx | null>(null)
 
   const applyLive = (c: string) => {
-    pop.setHex(c)
     const doc = useDoc.getState()
-    txRef.current ??= doc.beginTx(`Change ${label.toLowerCase()}`)
+    txRef.current ??= doc.beginTx(`Change ${txLabel.toLowerCase()}`)
     txRef.current.capture(shapeId, { [field]: '' })
     doc.patchLive((n) => {
       const s = n[shapeId]
       if (s) (s as unknown as Record<string, unknown>)[field] = c
     })
   }
-  const commitNow = () => {
+  const setNone = () => {
     txRef.current?.commit()
     txRef.current = null
-  }
-  const setNone = () => {
-    commitNow()
-    setProps([shapeId], { [field]: 'transparent' }, `Remove ${label.toLowerCase()}`)
+    setProps([shapeId], { [field]: 'transparent' }, `Remove ${txLabel.toLowerCase()}`)
   }
 
-  return (
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-[13px] font-semibold text-foreground/85">{label}</span>
-      <div className="relative flex items-center gap-1.5">
-        {noneable && (
-          <Hint label="Remove color">
-            <button className="cursor-pointer text-[11px] font-normal text-muted-foreground hover:text-foreground" onClick={setNone}>
-              none
-            </button>
-          </Hint>
-        )}
-        <ColorButton
-          color={value ?? 'transparent'}
-          onClick={() => {
-            commitNow()
-            pop.setOpen((o) => !o)
-          }}
-        />
-        <span className="w-11 text-right font-mono text-[11px] font-normal uppercase text-muted-foreground">
-          {(value && value !== 'transparent' ? value : '').replace('#', '')}
-        </span>
-        {pop.open && <ColorPopover popoverRef={pop.ref} onPick={applyLive} hex={pop.hex} setHex={pop.setHex} />}
-      </div>
-    </div>
-  )
+  return <ColorBoxRow value={value} onApply={applyLive} onRemove={noneable ? setNone : undefined} />
 }
 
 function CanvasBgField() {
   const bg = useUi((s) => s.canvasBg)
-  const pop = useColorPop(bg)
-  const apply = (c: string) => {
-    pop.setHex(c)
-    useUi.getState().setCanvasBg(c)
-  }
+  const apply = (c: string) => useUi.getState().setCanvasBg(keepAlpha(bg, c))
+  return <ColorBoxRow value={bg} onApply={apply} />
+}
 
+/* ---- small custom dropdown replacing native <select>, styled like our menus ---- */
+
+function MiniSelect<T extends string>({
+  value,
+  options,
+  onChange,
+  disabled,
+  disabledOptions,
+}: {
+  value: T
+  options: readonly (readonly [T, string])[]
+  onChange: (v: T) => void
+  disabled?: boolean
+  /** visually present but not selectable (coming-soon entries) */
+  disabledOptions?: readonly T[]
+}) {
+  const pop = usePopFixed()
+  const label = options.find(([v]) => v === value)?.[1] ?? value
   return (
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-[13px] font-semibold text-foreground/85">Background</span>
-      <div className="relative flex items-center gap-1.5">
-        <ColorButton color={bg} onClick={() => pop.setOpen((o) => !o)} />
-        <span className="w-11 text-right font-mono text-[11px] font-normal uppercase text-muted-foreground">{bg.replace('#', '')}</span>
-        {pop.open && <ColorPopover popoverRef={pop.ref} onPick={apply} hex={pop.hex} setHex={pop.setHex} />}
-      </div>
+    <div className="relative min-w-0 flex-1">
+      <button
+        disabled={disabled}
+        onClick={pop.toggle}
+        className={
+          'flex h-7 w-full min-w-0 cursor-pointer items-center justify-between gap-1 rounded-lg border border-transparent bg-[#2b2b2b] px-2 text-[12px] font-medium text-foreground/90 hover:border-border focus:outline-none ' +
+          (disabled ? 'cursor-default opacity-40' : '')
+        }
+      >
+        <span className="truncate">{label}</span>
+        <ChevronDown size={12} className="shrink-0 text-muted-foreground" />
+      </button>
+      {pop.open && !disabled && (
+        <div
+          ref={pop.ref}
+          style={{ top: pop.pos.top, left: pop.pos.left }}
+          className="fixed z-50 w-[192px] rounded-xl border border-border bg-popover/95 py-1 shadow-2xl backdrop-blur"
+        >
+          {options.map(([v, l]) => {
+            const off = disabledOptions?.includes(v) ?? false
+            return (
+              <button
+                key={v}
+                onClick={off ? undefined : () => {
+                  onChange(v)
+                  pop.setOpen(false)
+                }}
+                title={off ? 'Coming soon' : undefined}
+                className={
+                  'flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12px] font-medium hover:bg-accent ' +
+                  (off ? 'cursor-default text-muted-foreground/45 hover:bg-transparent' : 'cursor-pointer text-foreground/90')
+                }
+              >
+                <span className="flex-1 truncate">{l}</span>
+                {v === value && <Check size={12} className="shrink-0 text-primary" />}
+              </button>
+            )
+          })}
+        </div>
+      )}
     </div>
+  )
+}
+
+/** Tiny custom switch replacing native checkboxes. */
+function MiniSwitch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={'relative h-4 w-7 shrink-0 cursor-pointer rounded-full transition-colors ' + (checked ? 'bg-primary' : 'bg-[#3f3f46]')}
+    >
+      <span
+        className={'absolute top-0.5 size-3 rounded-full bg-white shadow transition-all ' + (checked ? 'left-3.5' : 'left-0.5')}
+      />
+    </button>
   )
 }
 
@@ -439,10 +622,11 @@ function SwatchButton({ color, onChange }: { color: string; onChange: (c: string
   const pop = useColorPop(color || '#000000')
   return (
     <div className="relative inline-flex items-center">
-      <ColorButton color={color} onClick={() => pop.setOpen((o) => !o)} />
+      <ColorButton color={color} onClick={(e) => pop.toggle(e)} />
       {pop.open && (
         <ColorPopover
           popoverRef={pop.ref}
+          pos={pop.pos}
           onPick={(c) => {
             // preserve an existing #rrggbbaa alpha suffix
             const alpha = /^#[0-9a-fA-F]{8}$/.test(color) ? color.slice(7) : ''
@@ -479,7 +663,7 @@ function Seg<T extends string>({
   onChange: (v: T) => void
 }) {
   return (
-    <div className="flex items-center gap-0.5 rounded-lg bg-background/40 p-0.5">
+    <div className="flex items-center gap-0.5 rounded-lg bg-[#2b2b2b] p-0.5">
       {options.map(([m, label]) => (
         <button
           key={m}
@@ -644,7 +828,7 @@ function FillField({ s }: { s: Shape }) {
         value={mode}
         onChange={pick}
       />
-      {mode === 'solid' && <ColorField shapeId={s.id} field="fill" label="Color" value={solid ?? 'transparent'} noneable />}
+      {mode === 'solid' && <ColorField shapeId={s.id} field="fill" txLabel="Solid fill" value={solid} noneable />}
       {mode === 'gradient' && g && (
         <>
           <GradientBar
@@ -665,6 +849,7 @@ function FillField({ s }: { s: Shape }) {
                 [
                   ['linear', 'Linear'],
                   ['radial', 'Radial'],
+                  ['conic', 'Conic'],
                 ] as const
               }
               value={g.type}
@@ -736,7 +921,7 @@ function FillField({ s }: { s: Shape }) {
                   onEnd={end}
                   onCommit={(v) => patchG({ stops: g.stops.map((s2, j) => (j === i ? { ...s2, alpha: v } : s2)) }, 'Gradient opacity')}
                 />
-                {g.type === 'linear' && (
+                {(g.type === 'linear' || g.type === 'conic') && (
                   <NumField
                     label="°"
                     min={0}
@@ -767,24 +952,24 @@ function FillField({ s }: { s: Shape }) {
               Choose image
             </Button>
           </Row>
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[13px] font-semibold text-foreground/85">Fit</span>
-            <select
-              className="h-6 w-24 rounded-md border border-border bg-background/40 px-1 text-[12px] font-medium outline-none focus:border-ring"
+          <Row>
+            <span className="shrink-0 text-[13px] font-semibold text-foreground/85">Fit</span>
+            <MiniSelect
               value={image.fit ?? 'cover'}
-              onChange={(e) => setFill({ ...image, fit: e.target.value as 'cover' | 'contain' }, 'Image fit')}
-            >
-              <option value="cover">Cover</option>
-              <option value="contain">Contain</option>
-            </select>
-          </div>
+              options={[
+                ['cover', 'Cover'],
+                ['contain', 'Contain'],
+              ]}
+              onChange={(v) => setFill({ ...image, fit: v }, 'Image fit')}
+            />
+          </Row>
         </>
       )}
     </>
   )
 }
 
-const SHADOW_DEFAULT: ShadowStyle = { x: 0, y: 8, blur: 24, color: '#00000066' }
+const SHADOW_DEFAULT: ShadowStyle = { x: 0, y: 8, blur: 24, spread: 0, color: '#00000066' }
 
 /** Drop / inner shadow editor, shared shape of the two sections. */
 function ShadowSection({ s, field, title }: { s: Shape; field: 'shadow' | 'innerShadow'; title: string }) {
@@ -836,13 +1021,15 @@ function ShadowSection({ s, field, title }: { s: Shape; field: 'shadow' | 'inner
               onEnd={end}
               onCommit={(v) => setF({ blur: Math.max(0, v) }, 'Shadow blur')}
             />
+            <NumField
+              label="S"
+              value={sh.spread ?? 0}
+              onLive={(v) => setFLive({ spread: v })}
+              onEnd={end}
+              onCommit={(v) => setF({ spread: v }, 'Shadow spread')}
+            />
           </Row>
-          <div className="flex items-center justify-between">
-            <span className="text-[13px] font-semibold text-foreground/85">Color</span>
-            <div className="flex items-center gap-1.5">
-              <SwatchButton color={sh.color} onChange={(c) => setF({ color: c }, 'Shadow color')} />
-            </div>
-          </div>
+          <ColorBoxRow value={sh.color} onApply={(c) => setF({ color: c }, 'Shadow color')} />
         </>
       )}
     </Section>
@@ -862,28 +1049,27 @@ const FILTER_KINDS: Array<{ key: keyof Filters; label: string; def: number; min:
 
 /** Popover menu listing the filters the plus button can add. */
 function FilterAddMenu({ s }: { s: Shape }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  usePopoverDismiss(ref, () => setOpen(false), open)
+  const pop = usePopFixed()
   const add = (k: (typeof FILTER_KINDS)[number]) => {
     setProps([s.id], { filters: { ...(s.filters ?? {}), [k.key]: k.def } }, `Add ${k.label.toLowerCase()}`)
-    setOpen(false)
+    pop.setOpen(false)
   }
   return (
     <div className="relative">
       <Hint label="Add filter">
         <button
-          onClick={() => setOpen((o) => !o)}
+          onClick={pop.toggle}
           className="cursor-pointer text-muted-foreground hover:text-foreground"
           aria-label="Add filter"
         >
           <Plus size={13} />
         </button>
       </Hint>
-      {open && (
+      {pop.open && (
         <div
-          ref={ref}
-          className="absolute right-0 top-full z-40 mt-1.5 w-[168px] rounded-xl border border-border bg-popover/95 py-1.5 shadow-2xl backdrop-blur"
+          ref={pop.ref}
+          style={{ top: pop.pos.top, left: pop.pos.left }}
+          className="fixed z-50 w-[192px] rounded-xl border border-border bg-popover/95 py-1.5 shadow-2xl backdrop-blur"
         >
           <div className="px-2.5 pb-1 pt-0.5 text-[10px] font-normal uppercase tracking-[0.06em] text-muted-foreground/70">
             Add filter
@@ -961,6 +1147,157 @@ function MarginSection({ s }: { s: Shape }) {
     </Section>
   )
 }
+
+/** Border/stroke: addable weight + align row over a boxed color row. */
+function BorderSection({
+  s,
+  live,
+  end,
+  commit,
+}: {
+  s: Shape
+  live: (id: string, patch: ShapePatch, label: string) => void
+  end: () => void
+  commit: (patch: ShapePatch, label: string) => void
+}) {
+  const has = !!s.stroke
+  const isLine = s.type === 'line'
+  return (
+    <Section
+      title={isLine ? 'Stroke' : 'Border'}
+      open={has}
+      onAdd={
+        !has && !isLine
+          ? () => commit({ stroke: '#d9d9d9', strokeWidth: s.strokeWidth ?? 1 }, 'Add border')
+          : undefined
+      }
+      onRemove={has && !isLine ? () => commit({ stroke: undefined }, 'Remove border') : undefined}
+    >
+      <Row>
+        <NumField
+          label="W"
+          min={1}
+          value={s.strokeWidth ?? 1}
+          onLive={(v) => live(s.id, { strokeWidth: Math.max(1, v) }, 'Stroke width')}
+          onEnd={end}
+          onCommit={(v) => commit({ strokeWidth: Math.max(1, v) }, 'Stroke width')}
+        />
+        <MiniSelect
+          value="all"
+          options={[
+            ['all', 'Align: All'],
+            ['inside', 'Align: Inside'],
+            ['outside', 'Align: Outside'],
+          ]}
+          disabledOptions={isLine ? [] : ['inside', 'outside']}
+          onChange={() => { /* only 'All' is supported by the renderer for now */ }}
+        />
+      </Row>
+      <ColorField shapeId={s.id} field="stroke" txLabel={isLine ? 'Stroke color' : 'Border color'} value={s.stroke} />
+    </Section>
+  )
+}
+
+const FONT_FAMILIES: readonly (readonly [string, string])[] = [
+  ['"Geist Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif', 'Geist'],
+  ['"Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace', 'Geist Mono'],
+  ['Georgia, serif', 'Georgia'],
+  ['"Times New Roman", serif', 'Times New Roman'],
+  ['Arial, Helvetica, sans-serif', 'Arial'],
+  ['"Courier New", monospace', 'Courier New'],
+]
+
+const FONT_WEIGHTS: readonly (readonly [string, string])[] = [
+  ['400', 'Regular'],
+  ['500', 'Medium'],
+  ['600', 'Semibold'],
+  ['700', 'Bold'],
+]
+
+/** Typography: family, weight + size, line-height + letter-spacing, horizontal align. */
+function TypographySection({
+  s,
+  live,
+  end,
+  commit,
+}: {
+  s: Shape
+  live: (id: string, patch: ShapePatch, label: string) => void
+  end: () => void
+  commit: (patch: ShapePatch, label: string) => void
+}) {
+  const alignButtons: Array<{ icon: LucideIcon; a: 'left' | 'center' | 'right' | 'justify'; tip: string }> = [
+    { icon: AlignLeft, a: 'left', tip: 'Align left' },
+    { icon: AlignCenter, a: 'center', tip: 'Align center' },
+    { icon: AlignRight, a: 'right', tip: 'Align right' },
+    { icon: AlignJustify, a: 'justify', tip: 'Justify' },
+  ]
+  return (
+    <Section title="Typography">
+      <MiniSelect
+        value={(s.fontFamily ?? FONT_FAMILIES[0][0]) as string}
+        options={FONT_FAMILIES}
+        onChange={(v) => commit({ fontFamily: v }, 'Font family')}
+      />
+      <Row>
+        <MiniSelect
+          value={String(s.fontWeight ?? 500)}
+          options={FONT_WEIGHTS}
+          onChange={(v) => commit({ fontWeight: Number(v) }, 'Font weight')}
+        />
+        <NumField
+          label="Size"
+          min={4}
+          step={0.25}
+          value={s.fontSize ?? 24}
+          onLive={(v) => live(s.id, { fontSize: Math.max(4, v) }, 'Font size')}
+          onEnd={end}
+          onCommit={(v) => commit({ fontSize: Math.max(4, v) }, 'Font size')}
+        />
+      </Row>
+      <Row>
+        <NumField
+          label="LH"
+          step={0.01}
+          min={0.5}
+          max={4}
+          value={s.lineHeight ?? 1.4}
+          onLive={(v) => live(s.id, { lineHeight: clampF(v) }, 'Line height')}
+          onEnd={end}
+          onCommit={(v) => commit({ lineHeight: clampF(v) }, 'Line height')}
+        />
+        <NumField
+          label="LS"
+          step={0.1}
+          min={-20}
+          max={40}
+          value={s.letterSpacing ?? 0}
+          onLive={(v) => live(s.id, { letterSpacing: v }, 'Letter spacing')}
+          onEnd={end}
+          onCommit={(v) => commit({ letterSpacing: v }, 'Letter spacing')}
+        />
+      </Row>
+      <Row>
+        {alignButtons.map(({ icon: I, a, tip }) => (
+          <Hint key={a} label={tip}>
+            <button
+              onClick={() => commit({ align: a }, 'Align text')}
+              className={
+                'flex h-7 flex-1 cursor-pointer items-center justify-center rounded-md transition-colors ' +
+                ((s.align ?? 'left') === a ? 'bg-primary/20 text-primary' : 'bg-[#2b2b2b] text-muted-foreground hover:text-foreground')
+              }
+            >
+              <I size={13} />
+            </button>
+          </Hint>
+        ))}
+      </Row>
+    </Section>
+  )
+}
+
+const clampF = (v: number) => Math.min(4, Math.max(0.5, v))
+
 
 /**
  * Corner radius row: one uniform field with an expand toggle that reveals all four corners.
@@ -1127,7 +1464,7 @@ export function PropertiesPanel() {
         {s && !multi ? (
           <Input
             key={s.id}
-            className="h-6 border-0 bg-transparent px-1 text-[13px] font-medium shadow-none focus-visible:bg-background/40 focus-visible:ring-0"
+            className="h-6 border-0 bg-transparent px-1 text-[13px] font-medium shadow-none focus-visible:bg-[#2b2b2b] focus-visible:ring-0"
             defaultValue={s.name}
             onBlur={(e) => {
               const v = e.target.value.trim()
@@ -1196,9 +1533,7 @@ export function PropertiesPanel() {
               />
             </Row>
           </Section>
-          <Section title="Export">
-            <ExportButtons />
-          </Section>
+          <Section title="Export" addSlot={<ExportMenu />} />
         </aside>
       </TooltipProvider>
     )
@@ -1281,14 +1616,9 @@ export function PropertiesPanel() {
             <Row>
               <RadiusField s={s} live={live} end={end} commit={commitProp} />
               {s.type === 'frame' && (
-                <label className="flex shrink-0 cursor-pointer items-center justify-end gap-1.5 text-[12px] font-medium text-foreground/85">
+                <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[12px] font-medium text-foreground/85">
                   Clip
-                  <input
-                    type="checkbox"
-                    checked={s.clip ?? false}
-                    onChange={(e) => commitProp({ clip: e.target.checked }, 'Clip')}
-                    className="size-3.5 cursor-pointer accent-[var(--primary)]"
-                  />
+                  <MiniSwitch checked={s.clip ?? false} onChange={(v) => commitProp({ clip: v }, 'Clip')} />
                 </label>
               )}
             </Row>
@@ -1326,81 +1656,35 @@ export function PropertiesPanel() {
         {s.type === 'frame' && <MarginSection s={s} />}
 
         {(s.type === 'line' || s.type === 'rect' || s.type === 'ellipse' || s.type === 'frame') && (
-          <Section title={isLine ? 'Stroke' : 'Border'}>
-            <ColorField shapeId={s.id} field="stroke" label="Color" value={s.stroke} noneable />
-            <Row>
-              <NumField
-                label="W"
-                min={1}
-                value={s.strokeWidth ?? 1}
-                onLive={(v) => live(s.id, { strokeWidth: Math.max(1, v) }, 'Stroke width')}
-                onEnd={end}
-                onCommit={(v) => commitProp({ strokeWidth: Math.max(1, v) }, 'Stroke width')}
-              />
-            </Row>
-          </Section>
+          <BorderSection s={s} live={live} end={end} commit={commitProp} />
         )}
 
         {s.type === 'text' && (
-          <Section title="Typography">
-            <Row>
-              <NumField
-                label="S"
-                min={4}
-                step={0.25}
-                value={s.fontSize ?? 24}
-                onLive={(v) => live(s.id, { fontSize: Math.max(4, v) }, 'Font size')}
-                onEnd={end}
-                onCommit={(v) => commitProp({ fontSize: Math.max(4, v) }, 'Font size')}
-              />
-              <select
-                className="h-6 flex-1 rounded-md border border-border bg-background/40 px-1 text-[12px] outline-none focus:border-ring"
-                value={String(s.fontWeight ?? 500)}
-                onChange={(e) => commitProp({ fontWeight: Number(e.target.value) }, 'Font weight')}
-              >
-                <option value="400">Regular</option>
-                <option value="500">Medium</option>
-                <option value="600">Semibold</option>
-                <option value="700">Bold</option>
-              </select>
-            </Row>
-            <Row>
-              <span className="w-3.5 text-center text-[10px] text-muted-foreground/70">≡</span>
-              {(
-                [
-                  ['left', '⇤'],
-                  ['center', '↔'],
-                  ['right', '⇥'],
-                ] as const
-              ).map(([a, glyph]) => (
-                <button
-                  key={a}
-                  onClick={() => commitProp({ align: a }, 'Align text')}
-                  className={
-                    'h-6 flex-1 rounded text-[11px] ' +
-                    ((s.align ?? 'left') === a ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-accent')
-                  }
-                >
-                  {glyph}
-                </button>
-              ))}
-            </Row>
-            <ColorField shapeId={s.id} field="color" label="Text color" value={s.color} />
-          </Section>
+          <>
+            <TypographySection s={s} live={live} end={end} commit={commitProp} />
+            <Section
+              title="Text fill"
+              open={!!s.color}
+              onAdd={!s.color ? () => commitProp({ color: '#ececf1' }, 'Add text fill') : undefined}
+              onRemove={s.color ? () => commitProp({ color: undefined }, 'Remove text fill') : undefined}
+            >
+              <ColorField shapeId={s.id} field="color" txLabel="Text color" value={s.color} />
+            </Section>
+          </>
         )}
 
         {s.type === 'image' && (
           <Section title="Image">
             <Row>
-              <span className="text-[12px] text-foreground/80">Fit</span>
-              <select
-                className="h-6 flex-1 rounded-md border border-border bg-background/40 px-1 text-[12px] outline-none focus:border-ring"
+              <span className="shrink-0 text-[13px] font-semibold text-foreground/85">Fit</span>
+              <MiniSelect
                 value={s.fit ?? 'cover'}
-                onChange={(e) => commitProp({ fit: e.target.value as 'cover' | 'contain' }, 'Image fit')}
-              >
-                <option value="cover">Cover</option>
-                <option value="contain">Contain</option>
-              </select>
+                options={[
+                  ['cover', 'Cover'],
+                  ['contain', 'Contain'],
+                ]}
+                onChange={(v) => commitProp({ fit: v }, 'Image fit')}
+              />
             </Row>
             <Button
               variant="outline"
@@ -1422,47 +1706,54 @@ export function PropertiesPanel() {
           </Section>
         )}
 
-        <Section title="Export">
-          <ExportButtons />
-        </Section>
+        <Section title="Export" addSlot={<ExportMenu />} />
       </aside>
     </TooltipProvider>
   )
 }
 
-function ExportButtons() {
-  const btn =
-    'h-6 flex-1 cursor-pointer whitespace-nowrap rounded-md border border-border text-[11px] font-medium text-foreground/85 hover:bg-accent hover:text-foreground'
+/** Export: a single dropdown listing every format, opened from the section header. */
+function ExportMenu() {
+  const pop = usePopFixed()
+  const items: Array<[string, string, () => void]> = [
+    ['PNG', '2× raster', () => void exportSelectionPNG(2)],
+    ['JPG', '2× raster', () => void exportSelectionRaster('jpeg', 2)],
+    ['WEBP', '2× raster', () => void exportSelectionRaster('webp', 2)],
+    ['AVIF', '2× raster', () => void exportSelectionRaster('avif', 2)],
+    ['SVG', 'Vector', () => void exportSelectionSVG()],
+    ['EPS', 'Vector · PostScript', () => void exportSelectionEPS(false)],
+    ['AI', 'Vector · Illustrator', () => void exportSelectionEPS(true)],
+  ]
   return (
-    <>
-      <Row>
-        <Button variant="outline" size="sm" className={btn} onClick={() => void exportSelectionPNG(2)}>
-          PNG
-        </Button>
-        <Button variant="outline" size="sm" className={btn} onClick={() => void exportSelectionRaster('jpeg', 2)}>
-          JPG
-        </Button>
-        <Button variant="outline" size="sm" className={btn} onClick={() => void exportSelectionRaster('webp', 2)}>
-          WEBP
-        </Button>
-        <Button variant="outline" size="sm" className={btn} onClick={() => void exportSelectionRaster('avif', 2)}>
-          AVIF
-        </Button>
-      </Row>
-      <Row>
-        <Button variant="outline" size="sm" className={btn} onClick={() => void exportSelectionSVG()}>
-          SVG
-        </Button>
-        <Button variant="outline" size="sm" className={btn} onClick={() => void exportSelectionEPS(false)}>
-          EPS
-        </Button>
-        <Button variant="outline" size="sm" className={btn} onClick={() => void exportSelectionEPS(true)}>
-          AI
-        </Button>
-      </Row>
-      <p className="text-[10px] font-normal leading-snug text-muted-foreground/60">
-        PNG/JPG/WEBP/AVIF render at 2×. EPS/AI are vectors (Illustrator-compatible).
-      </p>
-    </>
+    <div className="relative">
+      <button
+        onClick={pop.toggle}
+        className="flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-foreground/85 hover:bg-accent hover:text-foreground"
+      >
+        Export
+        <ChevronDown size={11} />
+      </button>
+      {pop.open && (
+        <div
+          ref={pop.ref}
+          style={{ top: pop.pos.top, left: pop.pos.left }}
+          className="fixed z-50 w-[192px] rounded-xl border border-border bg-popover/95 py-1 shadow-2xl backdrop-blur"
+        >
+          {items.map(([label, sub, run]) => (
+            <button
+              key={label}
+              onClick={() => {
+                run()
+                pop.setOpen(false)
+              }}
+              className="flex w-full cursor-pointer items-baseline gap-2 px-2.5 py-1.5 text-left hover:bg-accent"
+            >
+              <span className="text-[12px] font-semibold text-foreground/90">{label}</span>
+              <span className="text-[10px] font-normal text-muted-foreground">{sub}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }

@@ -271,12 +271,16 @@ function TextView({ s }: { s: Shape }) {
         fontWeight: s.fontWeight ?? 500,
         fontFamily: s.fontFamily ?? UI_FONT,
         lineHeight: s.lineHeight ?? 1.4,
+        letterSpacing: s.letterSpacing ? `${s.letterSpacing}px` : undefined,
         textAlign: s.align ?? 'left',
         whiteSpace: 'pre-wrap',
         wordBreak: 'break-word',
         position: 'absolute',
         transform: rotationToCss(s.rotation),
-        filter: filtersToCss(s.filters),
+        filter:
+          [filtersToCss(s.filters), s.shadow ? `drop-shadow(${s.shadow.x}px ${s.shadow.y}px ${s.shadow.blur}px ${s.shadow.color})` : '']
+            .filter(Boolean)
+            .join(' ') || undefined,
         ...(editing
           ? { contentEditable: true as unknown as string, suppressContentEditableWarning: true as never, outline: 'none', cursor: 'text' }
           : {}),
