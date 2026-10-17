@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { go } from '@/App'
-import PetalMark from '@/components/PetalMark'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { useProjects } from '@/store/projectsStore'
 import type { ProjectMeta } from '@/store/projectsStore'
@@ -18,6 +17,10 @@ function fmtDate(ts: number) {
   return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
+function FlowerLogo({ size = 20, className }: { size?: number; className?: string }) {
+  return <img src="/petal-flower.svg" alt="" width={size} height={size} className={className} aria-hidden="true" />
+}
+
 export default function Dashboard() {
   const projects = useProjects((s) => s.projects)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -30,9 +33,9 @@ export default function Dashboard() {
 
   return (
     <div className="flex h-dvh flex-col">
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-card px-5">
-        <button className="flex items-center gap-2" onClick={() => go('/')}>
-          <PetalMark size={22} />
+      <header className="flex h-12 shrink-0 items-center justify-between border-b border-white/10 bg-card px-5">
+        <button className="flex cursor-pointer items-center gap-2" onClick={() => go('/')}>
+          <FlowerLogo size={20} />
           <span className="text-sm font-semibold tracking-tight">Petal</span>
         </button>
         <div className="flex items-center gap-3">
@@ -50,12 +53,18 @@ export default function Dashboard() {
       </header>
 
       <main className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">
-        <div className="mx-auto max-w-6xl px-6 py-8">
-          <h2 className="mb-4 text-xs font-medium text-muted-foreground">Files</h2>
+        <div className="mx-auto max-w-6xl px-6 py-10">
+          <div className="mb-2 flex items-baseline gap-3">
+            <h1 className="text-[34px] font-semibold leading-none tracking-tighter">petals</h1>
+            <span className="text-[12px] font-medium text-muted-foreground">
+              {sorted.length} file{sorted.length === 1 ? '' : 's'}
+            </span>
+          </div>
+          <p className="mb-8 text-[13px] text-muted-foreground">Your local-first design files — everything stays on this device.</p>
 
           {sorted.length === 0 ? (
-            <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-border py-24 text-center">
-              <PetalMark size={56} />
+            <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-white/15 py-24 text-center">
+              <FlowerLogo size={56} />
               <div>
                 <p className="text-sm font-medium">Your petals bloom here</p>
                 <p className="mt-1 text-xs text-muted-foreground">Create a project and start drawing — everything stays on this device.</p>
@@ -112,7 +121,7 @@ function ProjectCard({
       className="group cursor-pointer overflow-hidden rounded-xl border border-border bg-card text-left transition-all hover:border-primary/40 hover:shadow-lg"
     >
       <div className={cn('relative flex h-32 items-center justify-center bg-gradient-to-br', gradients[tint])}>
-        <PetalMark size={44} className="opacity-90 transition-transform group-hover:scale-110" />
+        <FlowerLogo size={44} className="opacity-90 transition-transform group-hover:scale-110" />
       </div>
       <div className="flex items-center justify-between gap-1 px-3 py-2.5">
         <div className="min-w-0 flex-1">
