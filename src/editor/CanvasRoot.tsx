@@ -35,6 +35,7 @@ export function CanvasRoot() {
   const space = useUi((s) => s.space)
   const empty = useDoc((s) => Object.keys(s.nodes).length === 0)
   const gestureKind = useUi((s) => s.gesture?.kind)
+  const canvasBg = useUi((s) => s.canvasBg)
 
   // register canvas element + sync camera to both layers without React re-render
   useEffect(() => {
@@ -87,7 +88,21 @@ export function CanvasRoot() {
       }
       const p = pageFromClient(e)
       if (g.kind === 'create' || g.kind === 'marquee') {
-        useUi.getState().setGesture({ ...g, point: p })
+        let p2 = p
+        if (g.kind === 'create' && e.shiftKey) {
+          // Shift-drag creation: 'square' for rect/ellipse/frame, 45° snapping for line
+          const dx = p.x - g.start.x
+          const dy = p.y - g.start.y
+          if (g.tool === 'line') {
+            const angle = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4)
+            const len = Math.hypot(dx, dy)
+            p2 = { x: g.start.x + Math.cos(angle) * len, y: g.start.y + Math.sin(angle) * len }
+          } else {
+            const m = Math.max(Math.abs(dx), Math.abs(dy))
+            p2 = { x: g.start.x + Math.sign(dx || 1) * m, y: g.start.y + Math.sign(dy || 1) * m }
+          }
+        }
+        useUi.getState().setGesture({ ...g, point: p2 })
       } else if (g.kind === 'move') {
         moveLive(p)
       } else if (g.kind === 'resize') {
@@ -231,7 +246,7 @@ export function CanvasRoot() {
       <div
         className="absolute inset-0 select-none overflow-hidden"
         ref={rootRef}
-        style={{ background: '#161619', cursor: cursorValue, touchAction: 'none' } as React.CSSProperties}
+        style={{ background: canvasBg, cursor: cursorValue, touchAction: 'none' } as React.CSSProperties}
         onPointerDown={onPointerDown}
         onDragOver={(e) => e.preventDefault()}
         onDrop={onDrop}

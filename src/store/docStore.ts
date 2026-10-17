@@ -97,12 +97,19 @@ export const useDoc = create<DocStore>((set, get) => {
     scheduleSave()
   }
 
-  /** Dangling-parent guard after history edits. */
+  /** Dangling-parent guard after history edits. Runs inside produce — never writes frozen state. */
   const sanitizeParents = () => {
     const { nodes } = get()
-    for (const s of Object.values(nodes)) {
-      if (s.parentId && !nodes[s.parentId]) s.parentId = null
-    }
+    const dangling = Object.values(nodes)
+      .filter((s) => s.parentId && !nodes[s.parentId])
+      .map((s) => s.id)
+    if (!dangling.length) return
+    applyMut((n) => {
+      for (const id of dangling) {
+        const s = n[id]
+        if (s && s.parentId && !n[s.parentId]) s.parentId = null
+      }
+    })
   }
 
   const entryChanged = (label: string, before: Tx['before']): HistoryEntry['changed'] => {
@@ -160,15 +167,12 @@ export const useDoc = create<DocStore>((set, get) => {
 
     deleteShapes(ids, label) {
       const { nodes } = get()
-      const all = subtreeIds(nodes, ids)
-      const deleted: Shape[] = []
+      const all = [...subtreeIds(nodes, ids)]
+      // snapshot PLAIN clones BEFORE the mutation — drafts must never leak into history
+      const deleted: Shape[] = all.map((id) => nodes[id]).filter(Boolean).map(clone)
       applyMut((n) => {
         for (const id of all) {
-          const s = n[id]
-          if (s) {
-            deleted.push(s)
-            delete n[id]
-          }
+          if (n[id]) delete n[id]
         }
       })
       push({ label, created: [], deleted, changed: [] })

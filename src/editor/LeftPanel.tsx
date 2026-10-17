@@ -1,22 +1,13 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import {
-  Circle,
-  Eye,
-  EyeOff,
-  Frame,
-  Image as ImageIcon,
-  Lock,
-  LockOpen,
-  Minus,
-  Plus,
-  Square,
-  Type,
-} from 'lucide-react'
+import { useRef, useState } from 'react'
+import { ChevronLeft, Circle, Eye, EyeOff, Frame, Image as ImageIcon, Lock, LockOpen, Minus, PanelLeft, Plus, Square, Type } from 'lucide-react'
 import type { Shape, ShapeType } from '@/model/types'
-import { childrenSorted, offsetForParent, subtreeIds, topOrderFor, ORDER_STEP } from '@/model/geometry'
+import { childrenSorted, subtreeIds, topOrderFor, ORDER_STEP } from '@/model/geometry'
 import { useDoc } from '@/store/docStore'
 import { useUi } from '@/store/uiStore'
+import { useProjects } from '@/store/projectsStore'
 import { setProps } from './commands'
+import { go } from '@/App'
+import PetalMark from '@/components/PetalMark'
 import { Hint, TooltipProvider } from '@/components/ui/tooltip'
 
 const typeIcon: Record<ShapeType, typeof Square> = {
@@ -33,18 +24,34 @@ interface Row {
   depth: number
 }
 
-/** Flatten the tree for display: children sorted by descending z-order, frames expanded. */
-function flatten(rows: Row[], nodes: Record<string, Shape>, parentId: string | null, depth: number) {
-  const kids = (childrenSorted(nodes).get(parentId) ?? []).slice().reverse()
-  for (const s of kids) {
-    rows.push({ s, depth })
-    if (s.type === 'frame') flatten(rows, nodes, s.id, depth + 1)
+/**
+ * Flatten the tree for display: children sorted by descending z-order, frames expanded.
+ * Shapes whose parent frame went missing are surfaced at the root level (defensive).
+ */
+function flatten(out: Row[], nodes: Record<string, Shape>) {
+  const walk = (parentId: string | null, depth: number) => {
+    const kids = (childrenSorted(nodes).get(parentId) ?? []).slice().reverse()
+    for (const s of kids) {
+      out.push({ s, depth })
+      if (s.type === 'frame') walk(s.id, depth + 1)
+    }
+  }
+  walk(null, 0)
+  for (const s of Object.values(nodes)) {
+    if (s.parentId === null || nodes[s.parentId]) continue
+    out.push({ s, depth: 0 })
+    for (const d of Object.values(nodes)) {
+      if (d.parentId === s.id) out.push({ s: d, depth: 1 })
+    }
   }
 }
 
-export function LeftPanel() {  const nodes = useDoc((s) => s.nodes)
+export function LeftPanel({ projectId }: { projectId: string }) {
+  const nodes = useDoc((s) => s.nodes)
   const selection = useUi((s) => s.selection)
   const editingText = useUi((s) => s.editingText)
+  const projectName = useProjects((s) => s.projects.find((p) => p.id === projectId)?.name ?? 'Untitled')
+  const [renaming, setRenaming] = useState(false)
 
   const [drag, setDrag] = useState<{ id: string } | null>(null)
   const [hover, setHover] = useState<{ id: string; zone: 'above' | 'below' | 'in' } | null>(null)
@@ -56,8 +63,7 @@ export function LeftPanel() {  const nodes = useDoc((s) => s.nodes)
   hoverRef.current = hover
 
   const rows: Row[] = []
-  flatten(rows, nodes, null, 0)
-  const rootMin = Math.min(...Object.values(nodes).filter((s) => s.parentId === null).map((s) => s.order).filter((n) => Number.isFinite(n)))
+  flatten(rows, nodes)
 
   const startDrag = (e: React.PointerEvent, id: string) => {
     if ((e.target as HTMLElement).closest('button')) return
@@ -115,7 +121,7 @@ export function LeftPanel() {  const nodes = useDoc((s) => s.nodes)
     window.addEventListener('pointerup', up)
   }
 
-  const Icon = ({ t }: { t: ShapeType }) => {
+  const TypeIcon = ({ t }: { t: ShapeType }) => {
     const I = typeIcon[t]
     return <I size={12} className="shrink-0 text-muted-foreground" />
   }
@@ -123,24 +129,68 @@ export function LeftPanel() {  const nodes = useDoc((s) => s.nodes)
   return (
     <TooltipProvider>
       <aside className="flex min-h-0 w-60 shrink-0 flex-col border-r border-border bg-card">
+        {/* file header: panel toggle · back · identity · name */}
+        <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-2">
+          <Hint label="Hide layers panel">
+            <button
+              className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+              onClick={() => useUi.getState().togglePanel('left')}
+            >
+              <PanelLeft size={14} />
+            </button>
+          </Hint>
+          <Hint label="Back to projects">
+            <button
+              className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+              onClick={() => go('/projects')}
+            >
+              <ChevronLeft size={14} />
+            </button>
+          </Hint>
+          <PetalMark size={15} />
+          {renaming ? (
+            <input
+              autoFocus
+              defaultValue={projectName}
+              onBlur={(e) => {
+                const v = e.target.value.trim()
+                if (v && v !== projectName) useProjects.getState().rename(projectId, v)
+                setRenaming(false)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                if (e.key === 'Escape') setRenaming(false)
+              }}
+              className="min-w-0 flex-1 rounded border border-input bg-transparent px-1.5 py-0.5 text-[13px] font-medium outline-none focus:border-ring"
+            />
+          ) : (
+            <button
+              className="min-w-0 flex-1 truncate rounded-md px-1.5 py-0.5 text-left text-[13px] font-medium hover:bg-accent"
+              onClick={() => setRenaming(true)}
+            >
+              {projectName}
+            </button>
+          )}
+        </div>
+
         {/* Pages */}
-        <div className="flex h-8 items-center justify-between px-3 pt-1.5">
-          <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Pages</span>
+        <div className="flex h-7 shrink-0 items-center justify-between pl-3 pr-1.5 pt-2">
+          <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/80">Pages</span>
           <Hint label="More pages soon">
-            <button className="text-muted-foreground hover:text-foreground" disabled>
+            <button className="text-muted-foreground/70" disabled>
               <Plus size={13} />
             </button>
           </Hint>
         </div>
-        <div className="px-2 pb-2">
-          <div className="flex h-7 items-center gap-2 rounded-md bg-accent px-2 text-[13px]">Page 1</div>
+        <div className="shrink-0 px-1.5 pb-1.5 pt-0.5">
+          <div className="flex h-6.5 items-center gap-2 rounded-md bg-accent px-2 text-[12px] text-foreground">Page 1</div>
         </div>
 
-        <div className="px-3 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Layers</div>
+        <div className="shrink-0 pb-1 pl-3 pt-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/80">Layers</div>
 
         <div className="min-h-0 flex-1 overflow-y-auto pb-3 scrollbar-thin" style={drag ? { userSelect: 'none' } : undefined}>
           {rows.length === 0 && (
-            <p className="px-3 py-6 text-center text-xs text-muted-foreground/70">
+            <p className="px-3 py-6 text-center text-[11px] text-muted-foreground/60">
               Nothing here yet — draw something on the canvas.
             </p>
           )}
@@ -158,21 +208,21 @@ export function LeftPanel() {  const nodes = useDoc((s) => s.nodes)
                 }}
                 onDoubleClick={() => setEditing(s.id)}
                 className={
-                  'group mx-2 mb-0.5 flex h-7 items-center gap-2 rounded-md pr-1 text-[13px] select-none ' +
-                  (selected ? 'bg-primary/20 text-primary' : 'text-foreground/90') +
-                  (hovered && hover?.zone === 'in' ? ' ring-1 ring-primary bg-accent' : '') +
-                  (drag?.id === s.id ? ' opacity-40' : ' hover:bg-accent/60')
+                  'group mx-1.5 mb-0.5 flex h-6.5 items-center gap-2 rounded-md pr-0.5 select-none ' +
+                  (selected ? 'bg-primary/15' : '') +
+                  (hovered && hover?.zone === 'in' ? ' ring-1 ring-inset ring-primary bg-accent' : '') +
+                  (drag?.id === s.id ? ' opacity-50' : ' hover:bg-accent/60')
                 }
                 style={{
                   paddingLeft: 6 + depth * 14,
                   ...(hovered && hover?.zone === 'above'
-                    ? { boxShadow: 'inset 0 2px 0 0 #f472b6' }
+                    ? { boxShadow: 'inset 0 2px 0 0 var(--primary)' }
                     : hovered && hover?.zone === 'below'
-                      ? { boxShadow: 'inset 0 -2px 0 0 #f472b6' }
+                      ? { boxShadow: 'inset 0 -2px 0 0 var(--primary)' }
                       : {}),
                 }}
               >
-                <Icon t={s.type} />
+                <TypeIcon t={s.type} />
                 {editing === s.id ? (
                   <input
                     autoFocus
@@ -185,28 +235,28 @@ export function LeftPanel() {  const nodes = useDoc((s) => s.nodes)
                       if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
                       if (e.key === 'Escape') setEditing(null)
                     }}
-                    className="min-w-0 flex-1 rounded bg-transparent text-[13px] outline-none"
+                    className="min-w-0 flex-1 rounded bg-background/60 text-[12px] outline-none px-0.5"
                   />
                 ) : (
-                  <span className={'min-w-0 flex-1 truncate' + (s.visible ? '' : ' opacity-40')}>{s.name}</span>
+                  <span className={'min-w-0 flex-1 truncate text-[12px] ' + (s.visible ? 'text-foreground' : 'text-muted-foreground/50 italic')}>{s.name}</span>
                 )}
                 <button
-                  className={cn('shrink-0', selected ? 'opacity-90' : 'opacity-0 group-hover:opacity-60 hover:opacity-100')}
+                  className={'shrink-0 ' + (s.locked || selected || !s.visible ? 'opacity-70' : 'opacity-0 group-hover:opacity-60 hover:opacity-100')}
                   onClick={(e) => {
                     e.stopPropagation()
                     setProps([s.id], { visible: !s.visible }, s.visible ? 'Hide' : 'Show')
                   }}
                 >
-                  {s.visible ? <Eye size={12} /> : <EyeOff size={12} />}
+                  {s.visible ? <Eye size={11} /> : <EyeOff size={11} />}
                 </button>
                 <button
-                  className={cn('shrink-0', s.locked || selected ? 'opacity-90' : 'opacity-0 group-hover:opacity-60 hover:opacity-100')}
+                  className={'shrink-0 ' + (s.locked || selected ? 'opacity-70' : 'opacity-0 group-hover:opacity-60 hover:opacity-100')}
                   onClick={(e) => {
                     e.stopPropagation()
                     setProps([s.id], { locked: !s.locked }, s.locked ? 'Unlock' : 'Lock')
                   }}
                 >
-                  {s.locked ? <Lock size={12} /> : <LockOpen size={12} />}
+                  {s.locked ? <Lock size={11} /> : <LockOpen size={11} />}
                 </button>
               </div>
             )
@@ -218,29 +268,12 @@ export function LeftPanel() {  const nodes = useDoc((s) => s.nodes)
             onPointerOver={() => setHover(null)}
           />
           {drag && !hover && (
-            <p
-              className="mt-2 text-center text-[11px] text-muted-foreground/60"
-              style={{ pointerEvents: 'none' }}
-            >
+            <p className="mt-2 text-center text-[11px] text-muted-foreground/60" style={{ pointerEvents: 'none' }}>
               Drop here to send to page background
             </p>
           )}
         </div>
       </aside>
     </TooltipProvider>
-  )
-
-  function cn(...xs: (string | false | undefined)[]) {
-    return xs.filter(Boolean).join(' ')
-  }
-}
-
-/** A small section wrapper used by panels. */
-export function PanelSection({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="border-b border-border px-3 py-3">
-      <h3 className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{title}</h3>
-      {children}
-    </section>
   )
 }

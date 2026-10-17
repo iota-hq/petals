@@ -7,7 +7,7 @@ import { commitTextEdit, setIntrinsicHeight, typeLive } from './commands'
 
 export type GroupMap = Map<string | null, Shape[]>
 
-const UI_FONT = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
+const UI_FONT = '"Geist Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
 
 function sameChildren(a: Shape[] | undefined, b: Shape[] | undefined): boolean {
   if (a === b) return true
@@ -35,7 +35,16 @@ export const ShapeNode = memo(
           <div
             data-node-id={s.id}
             className="absolute"
-            style={{ left: s.x, top: s.y, width: s.w, height: s.h, background: s.fill ?? 'transparent', borderRadius: s.radius ?? 0, opacity: s.opacity }}
+            style={{
+              left: s.x,
+              top: s.y,
+              width: s.w,
+              height: s.h,
+              background: s.fill ?? 'transparent',
+              borderRadius: s.radius ?? 0,
+              opacity: s.opacity,
+              border: s.stroke ? `${s.strokeWidth ?? 1}px solid ${s.stroke}` : undefined,
+            }}
           />
         )
       case 'ellipse':
@@ -43,7 +52,16 @@ export const ShapeNode = memo(
           <div
             data-node-id={s.id}
             className="absolute"
-            style={{ left: s.x, top: s.y, width: s.w, height: s.h, background: s.fill ?? 'transparent', borderRadius: '50%', opacity: s.opacity }}
+            style={{
+              left: s.x,
+              top: s.y,
+              width: s.w,
+              height: s.h,
+              background: s.fill ?? 'transparent',
+              borderRadius: '50%',
+              opacity: s.opacity,
+              border: s.stroke ? `${s.strokeWidth ?? 1}px solid ${s.stroke}` : undefined,
+            }}
           />
         )
       case 'image':
@@ -93,6 +111,7 @@ function FrameView({ s, group }: { s: Shape; group: GroupMap }) {
           background: s.fill ?? 'transparent',
           borderRadius: s.radius ?? 0,
           overflow: s.clip ? 'hidden' : 'visible',
+          border: s.stroke ? `${s.strokeWidth ?? 1}px solid ${s.stroke}` : undefined,
         }}
       >
         {kids.map((c) => (

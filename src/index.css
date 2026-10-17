@@ -1,6 +1,13 @@
-@import "tailwindcss";
+@import 'tailwindcss';
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
 
 @custom-variant dark (&:is(.dark *));
+
+@theme {
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+}
 
 :root {
   --background: #ffffff;
@@ -74,7 +81,7 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-family: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
     overflow: hidden;
   }
   input[type="number"]::-webkit-outer-spin-button,

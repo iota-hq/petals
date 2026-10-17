@@ -1,16 +1,21 @@
 import { useEffect } from 'react'
+import { ChevronLeft, PanelLeft, PanelRight } from 'lucide-react'
 import { useDoc } from '@/store/docStore'
 import { useUi } from '@/store/uiStore'
 import { afterLoadCamera } from './commands'
+import { go } from '@/App'
 import { useKeyboard } from './useKeyboard'
-import { TopBar } from './TopBar'
 import { Toolbar } from './Toolbar'
 import { LeftPanel } from './LeftPanel'
 import { PropertiesPanel } from './PropertiesPanel'
 import { CanvasRoot } from './CanvasRoot'
+import { UndoRedoButtons } from './UndoRedoButtons'
+import { Hint } from '@/components/ui/tooltip'
 
 export default function EditorPage({ projectId }: { projectId: string }) {
   useKeyboard()
+  const showLeft = useUi((s) => s.showLeft)
+  const showRight = useUi((s) => s.showRight)
 
   useEffect(() => {
     useDoc.getState().loadDoc(projectId)
@@ -19,16 +24,47 @@ export default function EditorPage({ projectId }: { projectId: string }) {
   }, [projectId])
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <TopBar projectId={projectId} />
-      <div className="flex min-h-0 flex-1">
-        <LeftPanel />
-        <main className="relative min-w-0 flex-1">
-          <CanvasRoot />
-          <Toolbar />
-        </main>
-        <PropertiesPanel />
-      </div>
+    <div className="flex h-full min-h-0">
+      {showLeft && <LeftPanel projectId={projectId} />}
+      <main className="relative min-w-0 flex-1">
+        <CanvasRoot />
+        <Toolbar />
+        {!showLeft && (
+          <div className="absolute left-3 top-3 z-30 flex items-center gap-0.5 rounded-lg border border-border bg-popover/95 p-0.5 shadow-lg backdrop-blur">
+            <Hint label="Back to projects">
+              <button
+                className="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+                onClick={() => go('/projects')}
+              >
+                <ChevronLeft size={15} />
+              </button>
+            </Hint>
+            <Hint label="Show layers panel">
+              <button
+                className="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+                onClick={() => useUi.getState().togglePanel('left')}
+              >
+                <PanelLeft size={15} />
+              </button>
+            </Hint>
+          </div>
+        )}
+        {!showRight && (
+          <div className="absolute right-3 top-3 z-30 flex items-center gap-0.5 rounded-lg border border-border bg-popover/95 p-0.5 shadow-lg backdrop-blur">
+            <UndoRedoButtons />
+            <div className="mx-0.5 h-4 w-px bg-border" />
+            <Hint label="Show properties panel">
+              <button
+                className="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+                onClick={() => useUi.getState().togglePanel('right')}
+              >
+                <PanelRight size={15} />
+              </button>
+            </Hint>
+          </div>
+        )}
+      </main>
+      {showRight && <PropertiesPanel />}
     </div>
   )
 }

@@ -1,22 +1,23 @@
 import type { Shape, ShapeType } from './types'
+import { nanoid } from 'nanoid'
 
 /** Per-type creation / read-back defaults (one place, like a Figma "default table"). */
 const typeDefaults: Record<ShapeType, Partial<Shape>> = {
-  frame: { clip: true, w: 400, h: 300, fill: undefined },
-  rect: { fill: '#ffffff', radius: 8, w: 100, h: 100 },
-  ellipse: { fill: '#ffffff', w: 100, h: 100 },
+  frame: { clip: true, w: 400, h: 300, fill: '#ffffff' },
+  rect: { fill: '#D9D9D9', radius: 8, w: 100, h: 100 },
+  ellipse: { fill: '#D9D9D9', w: 100, h: 100 },
   line: { stroke: '#ececf1', strokeWidth: 2, x1: 0, y1: 0, x2: 160, y2: 0, w: 0, h: 0 },
   text: {
     text: 'Text',
     fontSize: 24,
     fontWeight: 500,
     align: 'left',
-    color: '#ececf1',
+    color: '#0d0d0d',
     lineHeight: 1.4,
     w: 320,
     h: 34,
   },
-  image: { fit: 'cover', radius: 8, fill: undefined },
+  image: { fit: 'cover', radius: 8 },
 }
 
 const baseDefaults = {
@@ -45,6 +46,8 @@ export function createShape(partial: Partial<Shape> & { type: ShapeType }): Shap
     ...(typeDefaults[t] as Shape),
     name: baseName(t),
     ...partial,
+    // every shape MUST have an id — fall back to a fresh one for drag-created shapes
+    id: partial.id ?? nanoid(8),
   } as Shape
 }
 

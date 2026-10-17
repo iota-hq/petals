@@ -10,7 +10,12 @@ import { ShapeNode } from './NodeView'
 export const World = memo(function World() {
   const nodes = useDoc((s) => s.nodes)
   const group = useMemo(() => childrenSorted(nodes), [nodes])
-  const roots = group.get(null) ?? []
+  // paints roots plus any orphan whose parent frame is missing (defensive)
+  const roots = useMemo(() => {
+    const base = group.get(null) ?? []
+    const orphans = Object.values(nodes).filter((s) => s.parentId && !nodes[s.parentId])
+    return orphans.length ? [...base, ...orphans] : base
+  }, [group, nodes])
   return (
     <>
       {roots.map((s) => (

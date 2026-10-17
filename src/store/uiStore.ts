@@ -57,6 +57,8 @@ interface UiState {
   editingText: string | null
   showLeft: boolean
   showRight: boolean
+  /** Editor canvas background (page color behind everything). */
+  canvasBg: string
 
   setTool: (t: Tool) => void
   setCamera: (c: Camera) => void
@@ -70,6 +72,17 @@ interface UiState {
   setSpace: (v: boolean) => void
   setEditingText: (id: string | null) => void
   togglePanel: (side: 'left' | 'right') => void
+  setCanvasBg: (v: string) => void
+}
+
+export const DEFAULT_CANVAS_BG = '#404040'
+
+function initialCanvasBg(): string {
+  try {
+    return localStorage.getItem('petal.canvasBg') ?? DEFAULT_CANVAS_BG
+  } catch {
+    return DEFAULT_CANVAS_BG
+  }
 }
 
 export const useUi = create<UiState>((set) => ({
@@ -83,6 +96,7 @@ export const useUi = create<UiState>((set) => ({
   editingText: null,
   showLeft: true,
   showRight: true,
+  canvasBg: initialCanvasBg(),
 
   setTool: (tool) => set({ tool }),
   setCamera: (camera) => set({ camera }),
@@ -104,6 +118,14 @@ export const useUi = create<UiState>((set) => ({
   setEditingText: (editingText) => set({ editingText }),
   togglePanel: (side) =>
     set((s) => (side === 'left' ? { showLeft: !s.showLeft } : { showRight: !s.showRight })),
+  setCanvasBg: (canvasBg) => {
+    try {
+      localStorage.setItem('petal.canvasBg', canvasBg)
+    } catch {
+      /* ignore */
+    }
+    set({ canvasBg })
+  },
 }))
 
 /** Pointer-centered zoom, clamped. rect = canvas element rect at event time. */

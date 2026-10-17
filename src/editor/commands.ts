@@ -44,7 +44,7 @@ function toLocal(nodes: Record<string, Shape>, parentId: string | null, page: Ve
 
 /* ============================== creation ============================== */
 
-export function addShapeAt(tool: DragTool, rectPage: Rect): string {
+export function addShapeAt(tool: DragTool, rectPage: Rect, nameOverride?: string): string {
   const doc = useDoc.getState()
   const nodes = doc.nodes
   const r = rectPage
@@ -52,11 +52,12 @@ export function addShapeAt(tool: DragTool, rectPage: Rect): string {
   const parent = adoptFrameAt(nodes, center)
   const parentId = parent?.id ?? null
   const local = toLocal(nodes, parentId, { x: r.x, y: r.y })
+  const name = nameOverride ?? uniqueName(nodes, tool)
   const shape =
     tool === 'line'
       ? createShape({
           type: 'line',
-          name: uniqueName(nodes, 'line'),
+          name,
           parentId,
           order: topOrderFor(nodes, parentId) + 1024,
           x1: local.x,
@@ -68,7 +69,7 @@ export function addShapeAt(tool: DragTool, rectPage: Rect): string {
         })
       : createShape({
           type: tool,
-          name: uniqueName(nodes, tool),
+          name,
           parentId,
           order: topOrderFor(nodes, parentId) + 1024,
           x: local.x,
@@ -76,7 +77,7 @@ export function addShapeAt(tool: DragTool, rectPage: Rect): string {
           w: r.w,
           h: r.h,
         })
-  doc.insertShapes([shape], `Add ${shapeNames[tool]}`)
+  doc.insertShapes([shape], `Add ${nameOverride ?? shapeNames[tool]}`)
   useUi.setState({ selection: [shape.id], tool: 'select', gesture: null })
   return shape.id
 }
@@ -90,6 +91,83 @@ export function commitCreate(tool: DragTool, start: Vec, end: Vec) {
     else { r.x = start.x - 50; r.y = start.y - 50; r.w = 100; r.h = 100 }
   }
   addShapeAt(tool, r)
+}
+
+/** Frame preset sizes offered in the toolbar menu. */
+export const FRAME_PRESETS = [
+  { name: 'Phone', w: 390, h: 844 },
+  { name: 'Phone landscape', w: 844, h: 390 },
+  { name: 'Tablet', w: 768, h: 1024 },
+  { name: 'Laptop', w: 1280, h: 800 },
+  { name: 'Desktop', w: 1440, h: 900 },
+  { name: 'Square', w: 512, h: 512 },
+] as const
+
+/** Insert a preset frame centered in the middle of the visible viewport. */
+export function addFramePreset(name: string, w: number, h: number) {
+  const el = canvasEl.current
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  const center = pageFromClient({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 })
+  const suffix = uniqueName(useDoc.getState().nodes, 'frame')
+  addShapeAt('frame', { x: center.x - w / 2, y: center.y - h / 2, w, h }, name === 'Frame' ? suffix : suffix === 'Frame' ? name : `${name} · ${suffix.replace('Frame ', '')}`)
+}
+
+/* ============================== alignment ============================== */
+
+export type AlignEdge = 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom'
+
+/**
+ * Align the selection inside its containing frame (shared parent) —
+ * or inside the visible page area when the selection sits on the page.
+ */
+export function alignSelection(edge: AlignEdge) {
+  const doc = useDoc.getState()
+  const nodes = doc.nodes
+  const roots = selectionRoots(nodes, useUi.getState().selection)
+  if (!roots.length) return
+  const parentId = nodes[roots[0]].parentId
+  let bounds: Rect | null = null
+  if (parentId && nodes[parentId] && roots.every((id) => nodes[id].parentId === parentId)) {
+    bounds = pageAABB(nodes, nodes[parentId])
+  } else {
+    const el = canvasEl.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const cam = useUi.getState().camera
+    bounds = { x: -cam.x / cam.zoom, y: -cam.y / cam.zoom, w: rect.width / cam.zoom, h: rect.height / cam.zoom }
+  }
+  if (!bounds) return
+  const boxes = roots.map((id) => ({ id, b: pageAABB(nodes, nodes[id]) }))
+  const all = boundsOfRects(boxes.map((x) => x.b))
+  if (!all) return
+  let dx = 0
+  let dy = 0
+  if (edge === 'left') dx = bounds.x - all.x
+  else if (edge === 'hcenter') dx = bounds.x + bounds.w / 2 - all.x - all.w / 2
+  else if (edge === 'right') dx = bounds.x + bounds.w - all.x - all.w
+  else if (edge === 'top') dy = bounds.y - all.y
+  else if (edge === 'vcenter') dy = bounds.y + bounds.h / 2 - all.y - all.h / 2
+  else dy = bounds.y + bounds.h - all.y - all.h
+  if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return
+  const tx = doc.beginTx('Align')
+  for (const id of roots) tx.capture(id, { x: 0, y: 0, x1: 0, y1: 0, x2: 0, y2: 0 })
+  doc.patchLive((n) => {
+    for (const id of roots) {
+      const s = n[id]
+      if (!s) continue
+      if (s.type === 'line') {
+        s.x1 = (s.x1 ?? 0) + dx
+        s.y1 = (s.y1 ?? 0) + dy
+        s.x2 = (s.x2 ?? 0) + dx
+        s.y2 = (s.y2 ?? 0) + dy
+      } else {
+        s.x += dx
+        s.y += dy
+      }
+    }
+  })
+  tx.commit()
 }
 
 export function addTextAt(page: Vec): string {
