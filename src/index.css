@@ -92,7 +92,6 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-family: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-    overflow: hidden;
   }
   input[type="number"]::-webkit-outer-spin-button,
   input[type="number"]::-webkit-inner-spin-button {
