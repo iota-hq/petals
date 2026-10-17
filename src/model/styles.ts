@@ -1,4 +1,4 @@
-import type { Filters, Gradient, Shape, ShadowStyle } from './types'
+import type { CornerRadii, Filters, Gradient, ImageFill, Shape, ShadowStyle } from './types'
 
 /** Clamp helper for stop positions etc. */
 const clampTo = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
@@ -29,10 +29,16 @@ export function embeddedAlpha(color: string): number {
 
 /* -------------------------------------------------- fills -------------------------------------------------- */
 
-/** Paint fill (solid color or gradient object) as a CSS background value. */
+/** Paint fill (solid color, gradient object, or image paint) as a CSS background value. */
 export function fillToCss(fill: Shape['fill']): string {
   if (!fill) return 'transparent'
   if (typeof fill === 'string') return fill
+  if (fill.type === 'image') {
+    const fit = fill.fit === 'contain' ? 'contain' : 'cover'
+    return fill.src
+      ? `center / ${fit} no-repeat url('${fill.src.replace(/\n/g, '')}')`
+      : 'repeating-conic-gradient(#52525b 0% 25%, #3f3f3f 0% 50%) 50% / 16px 16px'
+  }
   const stops = fill.stops
   if (!stops.length) return 'transparent'
   const parts = stops
@@ -83,4 +89,24 @@ export function filtersToCss(f: Filters | undefined): string | undefined {
 /** Rotation deg → CSS transform string. */
 export function rotationToCss(rotation: number | undefined): string | undefined {
   return rotation ? `rotate(${rotation}deg)` : undefined
+}
+
+/* -------------------------------------------------- radii -------------------------------------------------- */
+
+const R4 = [0, 0, 0, 0] as [number, number, number, number]
+
+/** Corner radii c(tl, tr, br, bl) honoring per-corner `radii` over uniform `radius`. */
+export function cornersOf(s: Shape): [number, number, number, number] {
+  const r = s.radii
+  if (r && (r.tl || r.tr || r.br || r.bl)) return [r.tl, r.tr, r.br, r.bl]
+  const u = s.radius ?? 0
+  return u ? [u, u, u, u] : R4
+}
+
+/** CSS border-radius string ("12px 4px 8px 4px" when mixed, plain number when uniform). */
+export function radiusToCss(s: Shape): string | number {
+  const [tl, tr, br, bl] = cornersOf(s)
+  if (tl === tr && tr === br && br === bl) return tl
+  if (tl === br && tr === bl) return `${tl}px ${tr}px`
+  return `${tl}px ${tr}px ${br}px ${bl}px`
 }

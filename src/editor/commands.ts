@@ -222,6 +222,11 @@ function downscaleImage(file: File): Promise<{ src: string; w: number; h: number
   })
 }
 
+/** Read an image file into a stored data-URL (downscaled) — used by image renders and image fills. */
+export function fileToImageSrc(file: File): Promise<string | null> {
+  return downscaleImage(file).then((d) => (d ? d.src : null))
+}
+
 export async function addImageFile(file: File, at?: Vec) {
   const data = await downscaleImage(file)
   if (!data) return

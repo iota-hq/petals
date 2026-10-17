@@ -19,6 +19,19 @@ const gradientSchema = z.object({
   stops: z.array(gradientStopSchema),
 })
 
+const imageFillSchema = z.object({
+  type: z.literal('image'),
+  src: z.string().optional(),
+  fit: z.enum(['cover', 'contain']).optional(),
+})
+
+const radiiSchema = z.object({
+  tl: z.number(),
+  tr: z.number(),
+  br: z.number(),
+  bl: z.number(),
+})
+
 const marginSchema = z.object({
   t: z.number(),
   r: z.number(),
@@ -39,9 +52,10 @@ const nodeSchema = z.object({
   opacity: z.number(),
   visible: z.boolean(),
   locked: z.boolean(),
-  fill: z.union([z.string(), gradientSchema]).optional(),
+  fill: z.union([z.string(), gradientSchema, imageFillSchema]).optional(),
   rotation: z.number().optional(),
   radius: z.number().optional(),
+  radii: radiiSchema.optional(),
   clip: z.boolean().optional(),
   x1: z.number().optional(),
   y1: z.number().optional(),

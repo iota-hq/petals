@@ -1,7 +1,7 @@
-import type { Shape } from '@/model/types'
-import { boundsOfRects, lineEnds, pageAABB, selectionRoots, subtreeIds } from '@/model/geometry'
+import type { ImageFill, Shape } from '@/model/types'
+import { boundsOfRects, lineEnds, pageAABB, roundedRectPath, selectionRoots, subtreeIds } from '@/model/geometry'
 import type { Rect } from '@/model/geometry'
-import { filtersToCss, gradientVector, withAlpha } from '@/model/styles'
+import { cornersOf, filtersToCss, gradientVector, withAlpha } from '@/model/styles'
 import { useDoc } from '@/store/docStore'
 import { useUi } from '@/store/uiStore'
 
@@ -21,6 +21,14 @@ async function loadImage(src: string): Promise<HTMLImageElement | null> {
     img.onerror = () => resolve(null)
     img.src = src
   })
+}
+
+function download(blob: Blob, name: string) {
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = name
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000)
 }
 
 /** Absolute page-space box of a shape within a subtree walk (accumulate parent offsets). */
@@ -51,20 +59,35 @@ function childrenSortedOf(nodes: Record<string, Shape>, parentId: string): Shape
   return out
 }
 
-function selectionSnapshot(): { nodes: Record<string, Shape>; roots: string[] } | null {
+function collectSelection(): { nodes: Record<string, Shape>; roots: string[] } | null {
   const { nodes } = useDoc.getState()
   const roots = selectionRoots(nodes, useUi.getState().selection)
   if (!roots.length) return null
   return { nodes, roots }
 }
 
+function flatSelection(snap: { nodes: Record<string, Shape>; roots: string[] }): Shape[] {
+  const all: Shape[] = []
+  for (const r of snap.roots) {
+    all.push(snap.nodes[r])
+    for (const d of subtreeIds(snap.nodes, [r])) if (d !== r) all.push(snap.nodes[d])
+  }
+  return all.filter(Boolean)
+}
+
 /* ------------------------------ style helpers ------------------------------ */
 
 type FillPaint = string | CanvasGradient | null
 
+/** Image-paint getter with proper narrowing. */
+function imagePaintOf(s: Shape): ImageFill | null {
+  return typeof s.fill === 'object' && s.fill.type === 'image' ? s.fill : null
+}
+
 function canvasFill(ctx: CanvasRenderingContext2D, fill: Shape['fill'], b: Rect): FillPaint {
   if (!fill) return null
   if (typeof fill === 'string') return fill !== 'transparent' ? fill : null
+  if (fill.type === 'image') return null // image paints are drawn as clipped bitmaps
   const stops = fill.stops
   if (!stops.length) return null
   const v = gradientVector(fill.angle, b.w, b.h)
@@ -83,7 +106,7 @@ function shapePath(ctx: CanvasRenderingContext2D, s: Shape, b: Rect): Path2D {
   if (s.type === 'ellipse') {
     p.ellipse(b.x + b.w / 2, b.y + b.h / 2, Math.max(0.5, b.w / 2), Math.max(0.5, b.h / 2), 0, 0, Math.PI * 2)
   } else {
-    p.roundRect(b.x, b.y, b.w, b.h, s.radius ?? 0)
+    p.roundRect(b.x, b.y, b.w, b.h, cornersOf(s))
   }
   return p
 }
@@ -99,11 +122,7 @@ function cssFilterChain(s: Shape): string {
 }
 
 /** Emulates an inner shadow inside the shape by stroking a wide transparent line under a clip. */
-function innerShadowStroke(
-  ctx: CanvasRenderingContext2D,
-  path: Path2D,
-  s: Shape,
-) {
+function innerShadowStroke(ctx: CanvasRenderingContext2D, path: Path2D, s: Shape) {
   const sh = s.innerShadow
   if (!sh) return
   ctx.save()
@@ -127,13 +146,49 @@ function applyRotation(ctx: CanvasRenderingContext2D, rotation: number | undefin
   ctx.translate(-cx, -cy)
 }
 
-/* ------------------------------ PNG ------------------------------ */
+/* ------------------------------ PNG / JPG / WEBP / AVIF ------------------------------ */
+
+async function paintImageFill(
+  ctx: CanvasRenderingContext2D,
+  path: Path2D,
+  src: string | undefined,
+  fit: Fit2,
+  b: Rect,
+  cache: Map<string, HTMLImageElement | null>,
+) {
+  if (!src) return
+  const img = cache.get(src) ?? (await loadImage(src).then((i) => (cache.set(src, i), i)))
+  if (!img) return
+  ctx.save()
+  ctx.clip(path)
+  drawFitted(img, ctx, b, fit)
+  ctx.restore()
+}
+
+type Fit2 = 'cover' | 'contain' | undefined
+
+function drawFitted(img: HTMLImageElement, ctx: CanvasRenderingContext2D, b: Rect, fit: Fit2) {
+  const iw = img.naturalWidth
+  const ih = img.naturalHeight
+  if (!iw || !ih) return
+  if ((fit ?? 'cover') === 'contain') {
+    const scale = Math.min(b.w / iw, b.h / ih)
+    const w = iw * scale
+    const h = ih * scale
+    ctx.drawImage(img, b.x + (b.w - w) / 2, b.y + (b.h - h) / 2, w, h)
+  } else {
+    const scale = Math.max(b.w / iw, b.h / ih)
+    const w = iw * scale
+    const h = ih * scale
+    ctx.drawImage(img, b.x + (b.w - w) / 2, b.y + (b.h - h) / 2, w, h)
+  }
+}
 
 async function paintShape(
   ctx: CanvasRenderingContext2D,
   nodes: Record<string, Shape>,
   s: Shape,
-  images: Map<string, HTMLImageElement | null>,
+  cache: Map<string, HTMLImageElement | null>,
   ox: number,
   oy: number,
 ) {
@@ -151,6 +206,8 @@ async function paintShape(
       ctx.fillStyle = paint
       ctx.fill(path)
     }
+    const ip = imagePaintOf(s)
+    await paintImageFill(ctx, path, ip?.src, ip?.fit, b, cache)
     if (s.stroke) {
       ctx.lineWidth = s.strokeWidth ?? 1
       ctx.strokeStyle = s.stroke
@@ -158,12 +215,12 @@ async function paintShape(
     }
     innerShadowStroke(ctx, path, s)
     const { ox: cx, oy: cy } = childOffset(s, ox, oy)
-    for (const c of childrenSortedOf(nodes, s.id)) await paintShape(ctx, nodes, c, images, cx, cy)
+    for (const c of childrenSortedOf(nodes, s.id)) await paintShape(ctx, nodes, c, cache, cx, cy)
     ctx.restore()
     return
   }
 
-  if (s.type === 'rect') {
+  if (s.type === 'rect' || s.type === 'ellipse') {
     const b = absBox(s, ox, oy)
     applyRotation(ctx, s.rotation, b)
     const path = shapePath(ctx, s, b)
@@ -172,25 +229,8 @@ async function paintShape(
       ctx.fillStyle = paint
       ctx.fill(path)
     }
-    if (s.stroke) {
-      ctx.lineWidth = s.strokeWidth ?? 1
-      ctx.strokeStyle = s.stroke
-      ctx.stroke(path)
-    }
-    innerShadowStroke(ctx, path, s)
-    ctx.restore()
-    return
-  }
-
-  if (s.type === 'ellipse') {
-    const b = absBox(s, ox, oy)
-    applyRotation(ctx, s.rotation, b)
-    const path = shapePath(ctx, s, b)
-    const paint = canvasFill(ctx, s.fill, b)
-    if (paint) {
-      ctx.fillStyle = paint
-      ctx.fill(path)
-    }
+    const ip2 = imagePaintOf(s)
+    await paintImageFill(ctx, path, ip2?.src, ip2?.fit, b, cache)
     if (s.stroke) {
       ctx.lineWidth = s.strokeWidth ?? 1
       ctx.strokeStyle = s.stroke
@@ -217,29 +257,10 @@ async function paintShape(
   if (s.type === 'image') {
     const b = absBox(s, ox, oy)
     applyRotation(ctx, s.rotation, b)
-    const src = s.src
-    const img = src ? (images.get(src) ?? (await loadImage(src).then((i) => (images.set(src, i), i)))) : null
     const path = shapePath(ctx, s, b)
-    if (img) {
-      const iw = img.naturalWidth
-      const ih = img.naturalHeight
-      const fit = s.fit ?? 'cover'
-      let sx = 0
-      let sy = 0
-      let sw = iw
-      let sh2 = ih
-      if (fit === 'cover') {
-        const scale = Math.max(b.w / iw, b.h / ih)
-        sw = b.w / scale
-        sh2 = b.h / scale
-        sx = (iw - sw) / 2
-        sy = (ih - sh2) / 2
-      }
-      ctx.save()
-      ctx.clip(path)
-      ctx.drawImage(img, sx, sy, sw, sh2, b.x, b.y, b.w, b.h)
-      ctx.restore()
-    }
+    const src = s.src
+    const img = src ? (cache.get(src) ?? (await loadImage(src).then((i) => (cache.set(src, i), i)))) : null
+    if (img) drawFitted(img, ctx, b, s.fit)
     if (s.stroke) {
       ctx.lineWidth = s.strokeWidth ?? 1
       ctx.strokeStyle = s.stroke
@@ -258,24 +279,22 @@ async function paintShape(
     ctx.font = `${s.fontWeight ?? 500} ${fontSize}px ${s.fontFamily ?? UI_FONT}`
     ctx.fillStyle = s.color ?? '#ececf1'
     ctx.textBaseline = 'top'
-    const words = (s.text ?? '').split('\n')
-    const lines: string[] = []
-    for (const raw of words) {
+    const wrapped: string[] = []
+    for (const raw of (s.text ?? '').split('\n')) {
       let line = raw
-      // width-only wrap emulation
-      if (s.w > 0 && ctx.measureText(line).width > s.w) {
+      if (ctx.measureText(line).width > s.w && s.w > 0) {
         line = ''
         for (const w of raw.split(' ')) {
           const test = line ? `${line} ${w}` : w
           if (line && ctx.measureText(test).width > s.w) {
-            lines.push(line)
+            wrapped.push(line)
             line = w
           } else line = test
         }
       }
-      if (line) lines.push(line)
+      wrapped.push(line)
     }
-    lines.forEach((line, i) => {
+    wrapped.forEach((line, i) => {
       const tw = ctx.measureText(line).width
       const x = b.x + (s.align === 'center' ? (s.w - tw) / 2 : s.align === 'right' ? s.w - tw : 0)
       ctx.fillText(line, x, b.y + i * lh)
@@ -287,18 +306,18 @@ async function paintShape(
   ctx.restore()
 }
 
-export async function exportSelectionPNG(scale = 2) {
-  const snap = selectionSnapshot()
+const RASTER: Record<string, string> = {
+  png: 'image/png',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  avif: 'image/avif',
+}
+
+export async function exportSelectionRaster(format: 'png' | 'jpeg' | 'webp' | 'avif', scale = 2) {
+  const snap = collectSelection()
   if (!snap) return
   const { nodes, roots } = snap
-  const all: Shape[] = []
-  for (const r of roots) {
-    all.push(nodes[r])
-    for (const d of subtreeIds(nodes, [r])) {
-      if (d !== r) all.push(nodes[d])
-    }
-  }
-  const valid = all.filter(Boolean)
+  const valid = flatSelection(snap)
   const b = boundsOfRects(valid.map((s) => pageAABB(nodes, s)))
   if (!b || b.w <= 0 || b.h <= 0) return
 
@@ -308,22 +327,29 @@ export async function exportSelectionPNG(scale = 2) {
   const ctx = c.getContext('2d')
   if (!ctx) return
   ctx.scale(scale, scale)
+  if (format === 'jpeg') {
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, b.w, b.h)
+  }
   // pre-load images
-  const srcs = new Set(valid.map((s) => s.src).filter(Boolean) as string[])
-  const images = new Map<string, HTMLImageElement | null>()
-  await Promise.all(Array.from(srcs).map(async (src) => images.set(src, await loadImage(src))))
+  const srcs = new Set(
+    valid.flatMap((i) => [i.src, typeof i.fill === 'object' && i.fill.type === 'image' ? i.fill.src : undefined]).filter(Boolean) as string[],
+  )
+  const cache = new Map<string, HTMLImageElement | null>()
+  await Promise.all(Array.from(srcs).map(async (src) => cache.set(src, await loadImage(src))))
   for (const root of roots) {
     const s = nodes[root]
-    if (s) await paintShape(ctx, nodes, s, images, 0, 0)
+    if (s) await paintShape(ctx, nodes, s, cache, 0, 0)
   }
 
-  const blob = await new Promise<Blob | null>((res) => c.toBlob(res, 'image/png'))
+  const blob = await new Promise<Blob | null>((res) => c.toBlob(res, RASTER[format], format === 'jpeg' ? 0.92 : undefined))
   if (!blob) return
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = `${sanitizeName(nodes[roots[0]]?.name, 'petal-export')}.png`
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(a.href), 4000)
+  download(blob, `${sanitizeName(nodes[roots[0]]?.name, 'petal-export')}.${format === 'jpeg' ? 'jpg' : format}`)
+}
+
+/* keep the old external name working */
+export function exportSelectionPNG(scale = 2) {
+  return exportSelectionRaster('png', scale)
 }
 
 /* ------------------------------ SVG ------------------------------ */
@@ -333,10 +359,8 @@ function esc(v: string): string {
 }
 
 function gradientDefs(fill: Exclude<Shape['fill'], undefined>, idPrefix: string): string {
-  if (typeof fill === 'string' || !fill.stops.length) return ''
-  const W = 1
-  const H = 1
-  const v = gradientVector(fill.angle, W, H)
+  if (typeof fill === 'string' || fill.type === 'image' || !fill.stops.length) return ''
+  const v = gradientVector(fill.angle, 1, 1)
   const stops = fill.stops
     .slice()
     .sort((a, b2) => a.pos - b2.pos)
@@ -345,37 +369,72 @@ function gradientDefs(fill: Exclude<Shape['fill'], undefined>, idPrefix: string)
   if (fill.type === 'radial') {
     return `<radialGradient id="${idPrefix}" cx="0.5" cy="0.5" r="0.5">${stops}</radialGradient>`
   }
-  return `<linearGradient id="${idPrefix}" x1="${v.x0 / W}" y1="${v.y0 / H}" x2="${v.x1 / W}" y2="${v.y1 / H}">${stops}</linearGradient>`
+  return `<linearGradient id="${idPrefix}" x1="${v.x0}" y1="${v.y0}" x2="${v.x1}" y2="${v.y1}">${stops}</linearGradient>`
 }
 
 function svgFillAttr(fill: Shape['fill'], id: string): string {
   if (!fill) return ' fill="none"'
   if (typeof fill === 'string') return fill !== 'transparent' ? ` fill="${fill}"` : ' fill="none"'
+  if (fill.type === 'image') return ' fill="none"'
   return ` fill="url(#${id})"`
 }
 
 function svgStyleAttr(s: Shape): string {
   const f = cssFilterChain(s)
-  return f ? ` style="filter:${f}"` : ''
+  return f ? ` style="filter:${esc(f)}"` : ''
 }
 
-function shapeToSvg(
+function svgShapeEl(s: Shape, b: Rect, attrs: string): string {
+  if (s.type === 'ellipse') {
+    return `<ellipse cx="${b.x + b.w / 2}" cy="${b.y + b.h / 2}" rx="${Math.max(0.5, b.w / 2)}" ry="${Math.max(0.5, b.h / 2)}"${attrs}/>`
+  }
+  return `<path d="${roundedRectPath(b, cornersOf(s))}"${attrs}/>`
+}
+
+async function svgImageFills(
+  s: Shape,
+  b: Rect,
+  cache: Map<string, HTMLImageElement | null>,
+  clips: string[],
+  out: string[],
+  n: { i: number },
+): Promise<boolean> {
+  const fill = typeof s.fill === 'object' ? s.fill : null
+  if (!fill || fill.type !== 'image') return false
+  const src = fill.src
+  const img = src ? (cache.get(src) ?? (await loadImage(src).then((i) => (cache.set(src, i), i)))) : null
+  if (!img) return false
+  const id = `c${n.i++}`
+  const path = s.type === 'ellipse'
+    ? `M${b.x} ${b.y + b.h / 2}A${b.w / 2} ${b.h / 2} 0 1 0 ${b.x + b.w} ${b.y + b.h / 2}A${b.w / 2} ${b.h / 2} 0 1 0 ${b.x} ${b.y + b.h / 2}Z`
+    : roundedRectPath(b, cornersOf(s))
+  clips.push(`<clipPath id="${id}"><path d="${path}"/></clipPath>`)
+  out.push(`<g clip-path="url(#${id})">${imageEl(img.src, b, fill.fit)}</g>`)
+  return true
+}
+
+function imageEl(src: string, b: Rect, fit: 'cover' | 'contain' | undefined): string {
+  return `<image x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" preserveAspectRatio="${fit === 'contain' ? 'xMidYMid meet' : 'xMidYMid slice'}" href="${esc(src).replace(/\n/g, '')}"/>`
+}
+
+async function shapeToSvg(
   nodes: Record<string, Shape>,
   s: Shape,
   ox: number,
   oy: number,
   out: string[],
   clips: string[],
-  clipIndex: { n: number },
   defs: string[],
+  n: { i: number },
+  cache: Map<string, HTMLImageElement | null>,
 ) {
   if (!s.visible || s.opacity === 0) return
   const b = absBox(s, ox, oy)
   const op = s.opacity < 1 ? ` opacity="${s.opacity}"` : ''
   const stroke = s.stroke ? ` stroke="${s.stroke}" stroke-width="${s.strokeWidth ?? 1}"` : ''
   let gradId: string | null = null
-  if (s.fill && typeof s.fill === 'object') {
-    gradId = `grad${clipIndex.n++}`
+  if (typeof s.fill === 'object' && s.fill.type !== 'image') {
+    gradId = `grad${n.i++}`
     const def = gradientDefs(s.fill, gradId)
     if (def) defs.push(def)
   }
@@ -384,35 +443,36 @@ function shapeToSvg(
 
   if (s.type === 'frame') {
     let clipAttr = ''
+    let inner = ''
     if (s.clip) {
-      const id = `clip${clipIndex.n++}`
-      const rx = s.radius ? ` rx="${s.radius}"` : ''
-      clips.push(`<clipPath id="${id}"><rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}"${rx}/></clipPath>`)
+      const id = `clip${n.i++}`
+      clips.push(`<clipPath id="${id}"><path d="${roundedRectPath(b, cornersOf(s))}"/></clipPath>`)
       clipAttr = ` clip-path="url(#${id})"`
     }
-    const fill = svgFillAttr(s.fill, gradId!)
-    const rx = s.radius ? ` rx="${Math.min(s.radius, Math.min(b.w, b.h) / 2)}"` : ''
-    out.push(
-      `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}"${rx}${fill}${stroke}${op}${clipAttr}${rot}${styleAttr}/>`,
-    )
-    for (const c of childrenSortedOf(nodes, s.id)) {
-      const { ox: cx, oy: cy } = childOffset(s, ox, oy)
-      shapeToSvg(nodes, c, cx, cy, out, clips, clipIndex, defs)
+    const attrs = `${svgFillAttr(s.fill, gradId!)}${stroke}${op}${rot}${styleAttr}`
+    out.push(svgShapeEl(s, b, attrs))
+    if (await svgImageFills(s, b, cache, clips, out, n)) {
+      // image paint replaces nothing else
     }
+    const { ox: cx, oy: cy } = childOffset(s, ox, oy)
+    for (const c of childrenSortedOf(nodes, s.id)) {
+      const { ox: ccx, oy: ccy } = childOffset(s, ox, oy)
+      void ccx
+      void ccy
+      await shapeToSvg(nodes, c, cx, cy, out, clips, defs, n, cache)
+    }
+    void inner
     return
   }
+
+  await svgImageFills(s, b, cache, clips, out, n)
+
   if (s.type === 'rect') {
-    const fill = svgFillAttr(s.fill, gradId!)
-    out.push(
-      `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${Math.min(s.radius ?? 0, Math.min(b.w, b.h) / 2)}"${fill}${stroke}${op}${rot}${styleAttr}/>`,
-    )
+    out.push(svgShapeEl(s, b, `${svgFillAttr(s.fill, gradId!)}${stroke}${op}${rot}${styleAttr}`))
     return
   }
   if (s.type === 'ellipse') {
-    const fill = svgFillAttr(s.fill, gradId!)
-    out.push(
-      `<ellipse cx="${b.x + b.w / 2}" cy="${b.y + b.h / 2}" rx="${Math.max(0.5, b.w / 2)}" ry="${Math.max(0.5, b.h / 2)}"${fill}${stroke}${op}${rot}${styleAttr}/>`,
-    )
+    out.push(svgShapeEl(s, b, `${svgFillAttr(s.fill, gradId!)}${stroke}${op}${rot}${styleAttr}`))
     return
   }
   if (s.type === 'line') {
@@ -424,7 +484,7 @@ function shapeToSvg(
   }
   if (s.type === 'image' && s.src) {
     out.push(
-      `<image x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" preserveAspectRatio="${s.fit === 'contain' ? 'xMidYMid meet' : 'xMidYMid slice'}" href="${s.src}"${op}${rot}${styleAttr}/>`,
+      `<image x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" preserveAspectRatio="${s.fit === 'contain' ? 'xMidYMid meet' : 'xMidYMid slice'}" href="${esc(s.src).replace(/\n/g, '')}"${op}${rot}${styleAttr}/>`,
     )
     return
   }
@@ -445,31 +505,328 @@ function shapeToSvg(
   }
 }
 
-export function exportSelectionSVG() {
-  const snap = selectionSnapshot()
+export async function exportSelectionSVG() {
+  const snap = collectSelection()
   if (!snap) return
   const { nodes, roots } = snap
-  const all: Shape[] = []
-  for (const r of roots) {
-    all.push(nodes[r])
-    for (const d of subtreeIds(nodes, [r])) if (d !== r) all.push(nodes[d])
-  }
-  const valid = all.filter(Boolean)
+  const valid = flatSelection(snap)
   const b = boundsOfRects(valid.map((s) => pageAABB(nodes, s)))
   if (!b || b.w <= 0 || b.h <= 0) return
+
+  const srcs = new Set(
+    valid.flatMap((i) => [i.src, typeof i.fill === 'object' && i.fill.type === 'image' ? i.fill.src : undefined]).filter(Boolean) as string[],
+  )
+  const cache = new Map<string, HTMLImageElement | null>()
+  await Promise.all(Array.from(srcs).map(async (src) => cache.set(src, await loadImage(src))))
 
   const body: string[] = []
   const clips: string[] = []
   const defs: string[] = []
-  const clipIndex = { n: 0 }
-  for (const root of roots) shapeToSvg(nodes, nodes[root], 0, 0, body, clips, clipIndex, defs)
+  const n = { i: 0 }
+  for (const root of roots) await shapeToSvg(nodes, nodes[root], 0, 0, body, clips, defs, n, cache)
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(b.w)}" height="${Math.round(b.h)}" viewBox="${b.x} ${b.y} ${b.w} ${b.h}">${defs.join('')}${clips.join('')}${body.join('')}</svg>`
 
-  const blob = new Blob([svg], { type: 'image/svg+xml' })
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = `${sanitizeName(nodes[roots[0]]?.name, 'petal-export')}.svg`
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(a.href), 4000)
+  download(new Blob([svg], { type: 'image/svg+xml' }), `${sanitizeName(nodes[roots[0]]?.name, 'petal-export')}.svg`)
+}
+
+/* ------------------------------ EPS / AI ------------------------------ */
+
+const imageCache = new Map<string, HTMLImageElement | null>()
+
+const fmt = (v: number) => (Math.round(v * 100) / 100).toString()
+
+function rgbParts(hex: string): [string, string, string] | null {
+  const m = /^#([0-9a-fA-F]{6})$/.exec(hex) ?? /^#([0-9a-fA-F]{6})[0-9a-fA-F]{2}$/.exec(hex)
+  if (!m) return null
+  const h = m[1]
+  return [
+    fmt(parseInt(h.slice(0, 2), 16) / 255),
+    fmt(parseInt(h.slice(2, 4), 16) / 255),
+    fmt(parseInt(h.slice(4, 6), 16) / 255),
+  ]
+}
+
+function epsSetColor(hex: string): string {
+  const rgb = rgbParts(hex)
+  if (!rgb) return '0 0 0 setrgbcolor'
+  return `${rgb[0]} ${rgb[1]} ${rgb[2]} setrgbcolor`
+}
+
+/** Rounded-rect PostScript path in screen (y-down) coords, per-corner radii via arct. */
+function epsRectPath(c: [number, number, number, number], b: Rect): string {
+  const [tl, tr, br, bl] = c
+  const x2 = b.x + b.w
+  const y2 = b.y + b.h
+  return [
+    `${fmt(b.x + tl)} ${fmt(b.y)} moveto`,
+    `${fmt(x2 - tr)} ${fmt(b.y)} ${fmt(x2)} ${fmt(b.y + tr)} ${fmt(tr)} arct`,
+    `${fmt(x2)} ${fmt(y2 - br)} ${fmt(x2 - br)} ${fmt(y2)} ${fmt(br)} arct`,
+    `${fmt(b.x + bl)} ${fmt(y2)} ${fmt(b.x)} ${fmt(y2 - bl)} ${fmt(bl)} arct`,
+    `${fmt(b.x)} ${fmt(b.y + tl)} ${fmt(b.x + tl)} ${fmt(b.y)} ${fmt(tl)} arct`,
+    'closepath',
+  ].join(' ')
+}
+
+/** Rasterize an image (cropped to the target aspect) to raw-RGB ASCIIHex for EPS image ops. */
+function rgbHexForImage(
+  img: HTMLImageElement,
+  aspect: number,
+  fit: 'cover' | 'contain' | undefined,
+): { hex: string; w: number; h: number } {
+  const iw = img.naturalWidth
+  const ih = img.naturalHeight
+  if (!iw || !ih) return { hex: '', w: 1, h: 1 }
+  const canvas = document.createElement('canvas')
+  const MAX = 1024
+  if ((fit ?? 'cover') === 'cover') {
+    let sx: number
+    let sy: number
+    let sw: number
+    let sh: number
+    const ia = iw / ih
+    if (ia > aspect) {
+      sh = ih
+      sw = ih * aspect
+      sx = (iw - sw) / 2
+      sy = 0
+    } else {
+      sw = iw
+      sh = iw / aspect
+      sx = 0
+      sy = (ih - sh) / 2
+    }
+    const scale = Math.min(1, MAX / sw, MAX / sh)
+    canvas.width = Math.max(1, Math.round(sw * scale))
+    canvas.height = Math.max(1, Math.round(sh * scale))
+    const ctx = canvas.getContext('2d')!
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height)
+  } else {
+    // contain: letterbox on white
+    canvas.width = Math.max(1, Math.round(Math.min(MAX, aspect * 1024)))
+    canvas.height = Math.max(1, Math.round(canvas.width / aspect))
+    const ctx = canvas.getContext('2d')!
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    const scale = Math.min(canvas.width / iw, canvas.height / ih)
+    const w = iw * scale
+    const h = ih * scale
+    ctx.drawImage(img, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h)
+  }
+  const d = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data
+  let hex = ''
+  for (let i = 0; i < d.length; i += 4) {
+    hex += (hex.length % 240 === 239 ? '\n' : '')
+    hex += d[i].toString(16).padStart(2, '0')
+    hex += d[i + 1].toString(16).padStart(2, '0')
+    hex += d[i + 2].toString(16).padStart(2, '0')
+  }
+  return { hex: hex + '\n>\n', w: canvas.width, h: canvas.height }
+}
+
+function epsGradientShade(
+  fill: Exclude<Shape['fill'], undefined>,
+  b: Rect,
+): string | null {
+  if (typeof fill === 'string' || fill.type === 'image' || fill.stops.length < 2) return null
+  const stops = fill.stops.slice().sort((a, b2) => a.pos - b2.pos)
+  const funcs = stops.slice(0, -1).map((st, i) => {
+    const c0 = rgbParts(st.color) ?? ['0', '0', '0']
+    const c1 = rgbParts(stops[i + 1].color) ?? ['0', '0', '0']
+    return `<< /FunctionType 2 /Domain [0 1] /C0 [${c0.join(' ')}] /C1 [${c1.join(' ')}] /N 1 >>`
+  })
+  const fn = `<< /FunctionType 3 /Domain [0 1] /Functions [${funcs.join(' ')}] /Bounds [${stops
+    .slice(1, -1)
+    .map((st) => fmt(st.pos / 100))
+    .join(' ')}] /Encode [${stops.slice(0, -1).map(() => '0 1').join(' ')}] >>`
+  if (fill.type === 'radial') {
+    const cx = b.x + b.w / 2
+    const cy = b.y + b.h / 2
+    const r = Math.max(b.w, b.h) / 2
+    return `<< /ShadingType 3 /ColorSpace /DeviceRGB /Coords [${fmt(cx)} ${fmt(cy)} 0 ${fmt(cx)} ${fmt(cy)} ${fmt(r)}] /Function ${fn} >> shfill`
+  }
+  const v = gradientVector(fill.angle, b.w, b.h)
+  return `<< /ShadingType 2 /ColorSpace /DeviceRGB /Coords [${fmt(b.x + v.x0)} ${fmt(b.y + v.y0)} ${fmt(b.x + v.x1)} ${fmt(b.y + v.y1)}] /Function ${fn} /Extend [true true] >> shfill`
+}
+
+function epsTextOps(s: Shape, b: Rect): string[] {
+  const c = document.createElement('canvas').getContext('2d')
+  if (!c) return []
+  const fontSize = s.fontSize ?? 24
+  const lh = fontSize * (s.lineHeight ?? 1.4)
+  c.font = `${s.fontWeight ?? 500} ${fontSize}px ${s.fontFamily ?? UI_FONT}`
+  const lines: string[] = []
+  for (const raw of (s.text ?? '').split('\n')) {
+    if (s.w > 0 && c.measureText(raw).width > s.w) {
+      let acc = ''
+      for (const w of raw.split(' ')) {
+        const test = acc ? `${acc} ${w}` : w
+        if (acc && c.measureText(test).width > s.w) {
+          lines.push(acc)
+          acc = w
+        } else acc = test
+      }
+      if (acc) lines.push(acc)
+    } else lines.push(raw)
+  }
+  const font = (s.fontWeight ?? 500) >= 600 ? 'Helvetica-Bold' : 'Helvetica'
+  const color = epsSetColor(s.color ?? '#0d0d0d')
+  const baseY = b.y + fontSize * 0.82
+  return lines.map((line, i) => {
+    const anchor =
+      s.align === 'center' ? ' dup stringwidth pop 2 div neg 0 rmoveto' : s.align === 'right' ? ' dup stringwidth pop neg 0 rmoveto' : ''
+    return `gsave ${fmt(b.x)} ${fmt(baseY + i * lh)} translate /${font} findfont ${fmt(fontSize)} scalefont setfont ${color} 0 0 moveto (${line.replace(/\\/g, '\\\\')})${anchor} show grestore`
+  })
+}
+
+async function epsShape(
+  nodes: Record<string, Shape>,
+  s: Shape,
+  ox: number,
+  oy: number,
+  out: string[],
+) {
+  if (!s.visible || s.opacity === 0) return
+  const b = absBox(s, ox, oy)
+  const rot = (body: string) =>
+    s.rotation
+      ? `gsave ${fmt(b.x + b.w / 2)} ${fmt(b.y + b.h / 2)} translate ${fmt(s.rotation)} rotate ${fmt(-(b.x + b.w / 2))} ${fmt(-(b.y + b.h / 2))} translate\n${body}\ngrestore\n`
+      : body + '\n'
+
+  const fill = s.fill
+  const solid = typeof fill === 'string' && fill !== 'transparent' && fill !== 'none' ? fill : null
+  const grad = typeof fill === 'object' && fill.type !== 'image' ? fill : null
+  const imagePaint = typeof fill === 'object' && fill.type === 'image' ? fill : null
+  const isEllipse = s.type === 'ellipse'
+
+  const epsImageOp = (src: string | undefined, fit: 'cover' | 'contain' | undefined, bb: Rect): string => {
+    if (!src) return ''
+    const img = imageCache.get(src)
+    if (!img) return ''
+    const { hex, w, h } = rgbHexForImage(img, bb.w / bb.h, fit)
+    if (!hex) return ''
+    return [
+      'gsave clip',
+      `${fmt(bb.x)} ${fmt(bb.y)} translate ${fmt(bb.w)} ${fmt(bb.h)} scale`,
+      '/DeviceRGB setcolorspace',
+      `${w} ${h} 8 [${w} 0 0 ${h} 0 0] currentfile /ASCIIHexDecode filter image`,
+      hex,
+      'grestore',
+    ].join('\n') + '\n'
+  }
+
+  // shape body path
+  let body = ''
+  const isBoxy = s.type === 'rect' || s.type === 'frame' || s.type === 'image' || isEllipse
+  if (isBoxy) {
+    if (isEllipse) {
+      const cx = b.x + b.w / 2
+      const cy = b.y + b.h / 2
+      const pts: string[] = []
+      for (let i = 0; i <= 72; i++) {
+        const a = (i / 72) * Math.PI * 2
+        pts.push(`${fmt(cx + (b.w / 2) * Math.cos(a))} ${fmt(cy + (b.h / 2) * Math.sin(a))} ${i === 0 ? 'moveto' : 'lineto'}`)
+      }
+      body = `newpath ${pts.join(' ')} closepath\n`
+    } else {
+      body = `newpath ${epsRectPath(cornersOf(s), b)}\n`
+    }
+  }
+
+  const paintsFill = s.type === 'rect' || s.type === 'frame' || isEllipse || s.type === 'image'
+  if (paintsFill) {
+    if (solid) body += `gsave ${epsSetColor(solid)} fill grestore\n`
+    if (grad) {
+      const shade = epsGradientShade(grad, b)
+      if (shade) body += `gsave clip ${shade} grestore\n`
+    }
+    if (imagePaint) body += epsImageOp(imagePaint.src, imagePaint.fit, b)
+    if (s.type === 'image' && s.src) body += epsImageOp(s.src, s.fit, b)
+    if (s.stroke) body += `${epsSetColor(s.stroke)} ${fmt(s.strokeWidth ?? 1)} setlinewidth 1 setlinecap stroke\n`
+  } else if (s.type === 'line') {
+    const e = lineEnds(s)
+    body = `newpath ${fmt(ox + e.x1)} ${fmt(oy + e.y1)} moveto ${fmt(ox + e.x2)} ${fmt(oy + e.y2)} lineto ${epsSetColor(s.stroke ?? '#ececf1')} ${fmt(s.strokeWidth ?? 2)} setlinewidth 1 setlinecap stroke\n`
+  }
+
+  if (s.type === 'text') {
+    for (const l of epsTextOps(s, b)) out.push(rot(l))
+    return
+  }
+  out.push(rot(body))
+  if (s.type === 'frame') {
+    const { ox: cx, oy: cy } = childOffset(s, ox, oy)
+    for (const c2 of childrenSortedOf(nodes, s.id)) await epsShape(nodes, c2, cx, cy, out)
+  }
+}
+
+function epsWrapLikeLines(s: Shape, b: Rect): string[] {
+  const c = document.createElement('canvas').getContext('2d')
+  if (!c) return []
+  const fontSize = s.fontSize ?? 24
+  const lh = fontSize * (s.lineHeight ?? 1.4)
+  c.font = `${s.fontWeight ?? 500} ${fontSize}px ${s.fontFamily ?? UI_FONT}`
+  const lines: string[] = []
+  for (const raw of (s.text ?? '').split('\n')) {
+    if (s.w > 0 && c.measureText(raw).width > s.w) {
+      let acc = ''
+      for (const w of raw.split(' ')) {
+        const test = acc ? `${acc} ${w}` : w
+        if (acc && c.measureText(test).width > s.w) {
+          lines.push(acc)
+          acc = w
+        } else acc = test
+      }
+      if (acc) lines.push(acc)
+    } else lines.push(raw)
+  }
+  const font = (s.fontWeight ?? 500) >= 600 ? 'Helvetica-Bold' : 'Helvetica'
+  const color = epsSetColor(s.color ?? '#0d0d0d')
+  const baseY = b.y + fontSize * 0.82
+  return lines.map((line, i) => {
+    const anchor =
+      s.align === 'center' ? ' dup stringwidth pop 2 div neg 0 rmoveto' : s.align === 'right' ? ' dup stringwidth pop neg 0 rmoveto' : ''
+    return `gsave ${fmt(b.x)} ${fmt(baseY + i * lh)} translate /${font} findfont ${fmt(fontSize)} scalefont setfont (${line.replace(/\\/g, '\\\\')})${anchor} show grestore\n${color}`
+  })
+}
+
+export async function exportSelectionEPS(asAI = false) {
+  const snap = collectSelection()
+  if (!snap) return
+  const { nodes, roots } = snap
+  const valid = flatSelection(snap)
+  const b = boundsOfRects(valid.map((s) => pageAABB(nodes, s)))
+  if (!b || b.w <= 0 || b.h <= 0) return
+
+  const W = Math.ceil(b.w)
+  const Hh = Math.ceil(b.h)
+  const out: string[] = []
+  // pre-load images used by image fills / image nodes
+  const srcs = new Set(
+    valid.flatMap((i) => [i.src, typeof i.fill === 'object' && i.fill.type === 'image' ? i.fill.src : undefined]).filter(Boolean) as string[],
+  )
+  for (const src of srcs) imageCache.set(src, await loadImage(src))
+  for (const root of roots) await epsShape(nodes, nodes[root], 0, 0, out)
+
+  const name = sanitizeName(nodes[roots[0]]?.name, 'petal-export')
+  const eps = [
+    '%!PS-Adobe-3.0 EPSF-3.0',
+    `%%BoundingBox: 0 0 ${W} ${Hh}`,
+    `%%HiResBoundingBox: 0 0 ${fmt(b.w)} ${fmt(b.h)}`,
+    '%%Creator: Petal',
+    asAI ? '%%Creator: Adobe Illustrator(R) 24.3; AI application' : `%%Title: ${name}`,
+    '%%Pages: 1',
+    '%%EndComments',
+    '%%Page: 1 1',
+    'save',
+    // map screen (y-down) selection coords into PS space (y-up), origin at selection top-left
+    `${fmt(-b.x)} ${fmt(b.y + Hh)} translate 1 -1 scale`,
+    `0 0 ${W} ${Hh} rectclip`,
+    out.join('\n'),
+    'restore',
+    'showpage',
+    '%%EOF',
+    '',
+  ].join('\n')
+
+  download(new Blob([eps], { type: 'application/postscript' }), `${name}.${asAI ? 'ai' : 'eps'}`)
 }

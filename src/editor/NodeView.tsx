@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, memo, useRef } from 'react'
 import type { Shape } from '@/model/types'
 import { lineEnds, lineBox } from '@/model/geometry'
-import { filtersToCss, fillToCss, rotationToCss, shadowToCss } from '@/model/styles'
+import { filtersToCss, fillToCss, radiusToCss, rotationToCss, shadowToCss } from '@/model/styles'
 import { useDoc } from '@/store/docStore'
 import { useUi } from '@/store/uiStore'
 import { commitTextEdit, setIntrinsicHeight, typeLive } from './commands'
@@ -49,7 +49,7 @@ export const ShapeNode = memo(
               width: s.w,
               height: s.h,
               background: fillToCss(s.fill),
-              borderRadius: s.radius ?? 0,
+              borderRadius: radiusToCss(s),
               opacity: s.opacity,
               transform: rotationToCss(s.rotation),
               boxShadow: boxShadowOf(s),
@@ -92,7 +92,7 @@ export const ShapeNode = memo(
               width: s.w,
               height: s.h,
               objectFit: s.fit ?? 'cover',
-              borderRadius: s.radius ?? 0,
+              borderRadius: radiusToCss(s),
               opacity: s.opacity,
               transform: rotationToCss(s.rotation),
               boxShadow: boxShadowOf(s),
@@ -150,7 +150,7 @@ function FrameView({ s, group }: { s: Shape; group: GroupMap }) {
           position: 'absolute',
           inset: 0,
           background: fillToCss(s.fill),
-          borderRadius: s.radius ?? 0,
+          borderRadius: radiusToCss(s),
           overflow: s.clip ? 'hidden' : 'visible',
           boxShadow: boxShadowOf(s),
           border: s.stroke ? `${s.strokeWidth ?? 1}px solid ${s.stroke}` : undefined,

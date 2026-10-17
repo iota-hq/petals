@@ -16,6 +16,30 @@ export interface Rect {
 
 export const ORDER_STEP = 1024
 
+/** SVG path for a rounded rect with per-corner radii (arcs, y-down space). */
+export function roundedRectPath(b: Rect, corners: [number, number, number, number]): string {
+  const [tl, tr, br, bl] = corners.map((c) => Math.max(0, Math.min(c, Math.min(b.w, b.h) / 2)))
+  const x2 = b.x + b.w
+  const y2 = b.y + b.h
+  if (tl === tr && tr === br && br === bl) {
+    if (!tl) return `M${b.x} ${b.y}H${x2}V${y2}H${b.x}Z`
+    const r = tl
+    return `M${b.x + r} ${b.y}H${x2 - r}A${r} ${r} 0 0 1 ${x2} ${b.y + r}V${y2 - r}A${r} ${r} 0 0 1 ${x2 - r} ${y2}H${b.x + r}A${r} ${r} 0 0 1 ${b.x} ${y2 - r}V${b.y + r}A${r} ${r} 0 0 1 ${b.x + r} ${b.y}Z`
+  }
+  return [
+    `M${b.x + tl} ${b.y}`,
+    `H${x2 - tr}`,
+    tr ? `A${tr} ${tr} 0 0 1 ${x2} ${b.y + tr}` : `L${x2} ${b.y}`,
+    `V${y2 - br}`,
+    br ? `A${br} ${br} 0 0 1 ${x2 - br} ${y2}` : `L${x2} ${y2}`,
+    `H${b.x + bl}`,
+    bl ? `A${bl} ${bl} 0 0 1 ${b.x} ${y2 - bl}` : `L${b.x} ${y2}`,
+    `V${b.y + tl}`,
+    tl ? `A${tl} ${tl} 0 0 1 ${b.x + tl} ${b.y}` : `L${b.x} ${b.y}`,
+    'Z',
+  ].join('')
+}
+
 /* ---------- geometry (no rotation in v1: rotation is stored, not applied) ---------- */
 
 export function rectIntersect(a: Rect, b: Rect): boolean {

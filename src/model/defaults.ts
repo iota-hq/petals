@@ -68,7 +68,7 @@ export function normalizeShape(raw: unknown): Shape | null {
   shape.visible = r.visible !== false
   shape.locked = r.locked === true
   // pass through optional fields that exist
-  for (const key of ['fill', 'radius', 'clip', 'x1', 'y1', 'x2', 'y2', 'stroke', 'strokeWidth',
+  for (const key of ['fill', 'radius', 'radii', 'clip', 'x1', 'y1', 'x2', 'y2', 'stroke', 'strokeWidth',
     'rotation', 'shadow', 'innerShadow', 'filters', 'margin',
     'text', 'fontSize', 'fontWeight', 'fontFamily', 'align', 'color', 'lineHeight', 'src', 'fit'] as const) {
     const v = r[key]

@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react'
-import { Maximize, Minus, Plus } from 'lucide-react'
 import { offsetForParent, type Vec } from '@/model/geometry'
 import { useDoc } from '@/store/docStore'
 import { zoomAt, useUi, setZoomAroundCenter, type Handle } from '@/store/uiStore'
@@ -20,7 +19,6 @@ import {
   pageFromClient,
   resizeLive,
   canvasEl,
-  resetZoom100,
   startEndpoint,
   startResize,
 } from './commands'
@@ -269,7 +267,6 @@ export function CanvasRoot() {
             </div>
           </div>
         )}
-        <ZoomControls />
       </div>
     </TooltipProvider>
   )
@@ -286,36 +283,3 @@ function pickImageFile() {
   input.click()
 }
 
-function ZoomControls() {
-  const zoom = useUi((s) => s.camera.zoom)
-  const pct = Math.round(zoom * 100)
-  const step = (f: number) => {
-    const el = canvasEl.current
-    if (!el) return
-    const r = el.getBoundingClientRect()
-    zoomAt({ x: r.left + r.width / 2, y: r.top + r.height / 2 }, f, r)
-  }
-  return (
-    <div className="absolute bottom-4 left-4 z-20 flex items-center gap-0.5 rounded-lg border border-border bg-popover/95 p-0.5 shadow-lg backdrop-blur">
-      <Hint label="Zoom out">
-        <button className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground" onClick={() => step(1 / 1.2)}>
-          <Minus size={13} />
-        </button>
-      </Hint>
-      <button className="w-14 text-center text-[11px] tabular-nums text-muted-foreground hover:text-foreground" onClick={resetZoom100}>
-        {pct}%
-      </button>
-      <Hint label="Zoom in">
-        <button className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground" onClick={() => step(1.2)}>
-          <Plus size={13} />
-        </button>
-      </Hint>
-      <div className="mx-0.5 h-4 w-px bg-border" />
-      <Hint label="Zoom to fit">
-        <button className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground" onClick={fitAll}>
-          <Maximize size={13} />
-        </button>
-      </Hint>
-    </div>
-  )
-}

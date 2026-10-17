@@ -16,6 +16,21 @@ export interface Gradient {
   stops: GradientStop[]
 }
 
+/** Image-paint fill: drawn inside the shape with cover/contain fit. */
+export interface ImageFill {
+  type: 'image'
+  src?: string
+  fit?: Fit
+}
+
+/** Per-corner radii; takes precedence over `radius` when any value is set. */
+export interface CornerRadii {
+  tl: number
+  tr: number
+  br: number
+  bl: number
+}
+
 export interface ShadowStyle {
   x: number
   y: number
@@ -63,9 +78,10 @@ export interface Shape {
   visible: boolean
   locked: boolean
   // rect / ellipse / image / frame
-  fill?: string | Gradient
+  fill?: string | Gradient | ImageFill
   rotation?: number
   radius?: number
+  radii?: CornerRadii
   // rect / frame
   clip?: boolean
   // line: endpoints in parent space (x/y/w/h unused for lines)
