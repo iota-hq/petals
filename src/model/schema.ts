@@ -1,5 +1,31 @@
 import { z } from 'zod'
 
+const shadowSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  blur: z.number(),
+  color: z.string(),
+})
+
+const gradientStopSchema = z.object({
+  color: z.string(),
+  alpha: z.number(),
+  pos: z.number(),
+})
+
+const gradientSchema = z.object({
+  type: z.enum(['linear', 'radial']),
+  angle: z.number(),
+  stops: z.array(gradientStopSchema),
+})
+
+const marginSchema = z.object({
+  t: z.number(),
+  r: z.number(),
+  b: z.number(),
+  l: z.number(),
+})
+
 const nodeSchema = z.object({
   id: z.string(),
   type: z.enum(['frame', 'rect', 'ellipse', 'line', 'text', 'image']),
@@ -13,7 +39,8 @@ const nodeSchema = z.object({
   opacity: z.number(),
   visible: z.boolean(),
   locked: z.boolean(),
-  fill: z.string().optional(),
+  fill: z.union([z.string(), gradientSchema]).optional(),
+  rotation: z.number().optional(),
   radius: z.number().optional(),
   clip: z.boolean().optional(),
   x1: z.number().optional(),
@@ -22,6 +49,10 @@ const nodeSchema = z.object({
   y2: z.number().optional(),
   stroke: z.string().optional(),
   strokeWidth: z.number().optional(),
+  shadow: shadowSchema.optional(),
+  innerShadow: shadowSchema.optional(),
+  filters: z.record(z.string(), z.number()).optional(),
+  margin: marginSchema.optional(),
   text: z.string().optional(),
   fontSize: z.number().optional(),
   fontWeight: z.number().optional(),

@@ -54,8 +54,7 @@ export function Toolbar() {
   }, [frameMenu])
 
   const clickFrame = () => {
-    if (tool !== 'frame') setFrameMenu((m) => !m)
-    else setFrameMenu((m) => !m)
+    setFrameMenu((m) => !m)
   }
 
   return (
@@ -104,32 +103,28 @@ export function Toolbar() {
           {tools.map((t, i) => {
             const active = tool === t.id
             const Icon = t.icon
-            const click = () => {
-              if (t.id === 'frame') clickFrame()
-              else useUi.getState().setTool(t.id)
-            }
+            const isFrame = t.id === 'frame'
             return (
-              <div key={t.id} className="flex items-center">
+              <div key={t.id} className="flex items-center gap-0.5">
                 <Hint label={`${t.label} (${t.key})`} side="top">
                   <button
                     disabled={gesture != null}
-                    onClick={click}
+                    onClick={() => useUi.getState().setTool(t.id)}
                     className={
                       'flex size-8 items-center justify-center rounded-lg transition-colors ' +
                       (active
                         ? 'bg-primary text-primary-foreground'
-                        : 'text-muted-foreground hover:bg-accent hover:text-foreground') +
-                      (t.id === 'frame' ? ' pr-3' : '')
+                        : 'text-muted-foreground hover:bg-accent hover:text-foreground')
                     }
                   >
                     <Icon size={15} />
                   </button>
                 </Hint>
-                {t.id === 'frame' && (
+                {isFrame && (
                   <button
                     disabled={gesture != null}
                     onClick={clickFrame}
-                    className="-ml-2 mr-0.5 flex h-8 w-3 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
+                    className="flex h-8 w-4 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
                     aria-label="Frame presets"
                   >
                     <svg width="8" height="8" viewBox="0 0 8 8" className="opacity-70">

@@ -10,17 +10,20 @@ import {
   Circle,
   Frame as FrameIcon,
   Image as ImageIcon,
+  Minus,
   Minus as LineIcon,
+  Minus as RemoveIcon,
   PanelRight,
+  Plus,
   Square,
   Type,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import type { Shape, ShapePatch, ShapeType } from '@/model/types'
+import type { Filters, Gradient, GradientStop, Margin, ShadowStyle, Shape, ShapePatch, ShapeType } from '@/model/types'
 import { pageAABB, selectionRoots, boundsOfRects } from '@/model/geometry'
 import { useDoc, type Tx } from '@/store/docStore'
-import { useUi, DEFAULT_CANVAS_BG } from '@/store/uiStore'
-import { addImageFile, alignSelection, nudge, setProps, type AlignEdge } from './commands'
+import { useUi, DEFAULT_CANVAS_BG, setZoomAroundCenter } from '@/store/uiStore'
+import { addImageFile, alignSelection, canvasEl, nudge, setProps, type AlignEdge } from './commands'
 import { exportSelectionPNG, exportSelectionSVG } from './exporters'
 import { UndoRedoButtons } from './UndoRedoButtons'
 import { Button } from '@/components/ui/button'
@@ -32,10 +35,19 @@ import { Hint, TooltipProvider } from '@/components/ui/tooltip'
 const panelCls =
   'flex w-60 shrink-0 flex-col overflow-y-auto border-l border-border bg-card scrollbar-thin'
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ title, children, onAdd, addSlot }: { title: string; children: ReactNode; onAdd?: () => void; addSlot?: ReactNode }) {
   return (
     <section className="border-b border-border px-3 py-2.5">
-      <h3 className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/80">{title}</h3>
+      <div className="mb-1.5 flex items-center justify-between">
+        <h3 className="text-[11px] text-muted-foreground">{title}</h3>
+        {addSlot ?? (onAdd ? (
+          <Hint label="Add">
+            <button onClick={onAdd} className="text-muted-foreground hover:text-foreground">
+              <Plus size={13} />
+            </button>
+          </Hint>
+        ) : null)}
+      </div>
       <div className="space-y-1.5">{children}</div>
     </section>
   )
@@ -330,7 +342,306 @@ function CanvasBgField() {
   )
 }
 
-/* ------------------------------ alignment ------------------------------ */
+/* ------------------------------ styles: fill / shadow / filters / margin ------------------------------ */
+
+/** Small swatch that opens a color popover; used by gradient stops and shadow colors. */
+function SwatchButton({ color, onChange }: { color: string; onChange: (c: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const alphaBits = /^#[0-9a-fA-F]{8}$/.test(color) ? color.slice(7) : ''
+  return (
+    <div className="relative inline-flex items-center">
+      <ColorButton color={color} onClick={() => setOpen((o) => !o)} />
+      {open && (
+        <div className="absolute right-0 top-full z-40 mt-1.5 w-[196px] rounded-xl border border-border bg-popover/95 p-2.5 shadow-2xl backdrop-blur">
+          <HexColorPicker
+            color={/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(color) ? color.slice(0, 7) : '#000000'}
+            onChange={(c) => onChange(c + alphaBits)}
+          />
+          <div className="mt-2 flex items-center justify-between gap-1.5">
+            <Input
+              className="h-6 flex-1 bg-background/40 font-mono text-[11px] uppercase"
+              defaultValue={color}
+              onBlur={(e) => {
+                let v = e.target.value.trim()
+                if (!v.startsWith('#')) v = '#' + v
+                if (/^#[0-9a-fA-F]{8}$/.test(v) || /^#[0-9a-fA-F]{6}$/.test(v)) onChange(v.toLowerCase())
+              }}
+              onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+            />
+            <Button size="sm" variant="subtle" className="h-6 px-2 text-[11px]" onClick={() => setOpen(false)}>
+              Done
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const GRADIENT_STOP: GradientStop = { color: '#000000', alpha: 1, pos: 100 }
+
+/** Fill editor: solid color or linear/radial gradient with two stops. */
+function FillField({ s }: { s: Shape }) {
+  const g = typeof s.fill === 'object' && s.fill ? (s.fill as Gradient) : null
+  const solid = typeof s.fill === 'string' && s.fill !== 'transparent' ? s.fill : undefined
+
+  const setFill = (v: Shape['fill'], label: string) => setProps([s.id], { fill: v === undefined ? 'transparent' : v }, label)
+
+  const setStop = (i: 0 | 1, patch: Partial<GradientStop>) => {
+    if (!g) return
+    const stops = g.stops.map((st, j) => (j === i ? { ...st, ...patch } : st))
+    setProps([s.id], { fill: { ...g, stops } }, 'Gradient stop')
+  }
+
+  const startGradient = (type: 'linear' | 'radial') => {
+    const base = solid ?? '#f472b6'
+    setFill(
+      {
+        type,
+        angle: g?.angle ?? 90,
+        stops: [
+          { color: base, alpha: 1, pos: 0 },
+          { color: '#ffffff', alpha: 1, pos: 100 },
+        ],
+      },
+      'Gradient fill',
+    )
+  }
+
+  const mode: 'solid' | 'linear' | 'radial' = g ? g.type : 'solid'
+
+  return (
+    <>
+      <Row>
+        {(
+          [
+            ['solid', 'Solid'],
+            ['linear', 'Linear'],
+            ['radial', 'Radial'],
+          ] as const
+        ).map(([m, label]) => (
+          <button
+            key={m}
+            onClick={() => (m !== 'solid' ? startGradient(m) : g ? setFill(undefined, 'Solid fill') : undefined)}
+            className={
+              'flex-1 rounded-md px-1 py-0.5 text-[11px] ' +
+              (mode === m ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-accent')
+            }
+          >
+            {label}
+          </button>
+        ))}
+      </Row>
+      {mode === 'solid' ? (
+        <ColorField shapeId={s.id} field="fill" label="Fill" value={solid} noneable />
+      ) : (
+        <>
+          {[0, 1].map((i) => {
+            const st = g!.stops[i] ?? GRADIENT_STOP
+            return (
+              <div key={i} className="flex items-center gap-1.5">
+                <span className="w-3 text-center text-[10px] text-muted-foreground">{i === 0 ? 'A' : 'B'}</span>
+                <SwatchButton color={st.color} onChange={(c) => setStop(i as 0 | 1, { color: c })} />
+                <NumField
+                  label="%"
+                  scale={100}
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={st.alpha}
+                  onCommit={(v) => setStop(i as 0 | 1, { alpha: v })}
+                />
+              </div>
+            )
+          })}
+          {mode === 'linear' && (
+            <NumField
+              label="°"
+              min={0}
+              max={360}
+              value={g!.angle}
+              onCommit={(v) => setProps([s.id], { fill: { ...g!, angle: Math.min(360, Math.max(0, v)) } }, 'Gradient angle')}
+            />
+          )}
+        </>
+      )}
+    </>
+  )
+}
+
+const SHADOW_DEFAULT: ShadowStyle = { x: 0, y: 8, blur: 24, color: '#00000066' }
+
+/** Drop / inner shadow editor, shared shape of the two sections. */
+function ShadowSection({ s, field, title }: { s: Shape; field: 'shadow' | 'innerShadow'; title: string }) {
+  const sh = s[field]
+  const { live, end } = useLiveTx()
+
+  const setF = (patch: Partial<ShadowStyle>, label: string) => {
+    const base = (sh ?? SHADOW_DEFAULT) as ShadowStyle
+    setProps([s.id], { [field]: { ...base, ...patch } } as ShapePatch, label)
+  }
+  const setFLive = (patch: Partial<ShadowStyle>) => {
+    const base = (sh ?? SHADOW_DEFAULT) as ShadowStyle
+    live(s.id, { [field]: { ...base, ...patch } } as ShapePatch, 'Shadow')
+  }
+
+  return (
+    <Section title={title} onAdd={sh ? undefined : () => setProps([s.id], { [field]: SHADOW_DEFAULT } as ShapePatch, 'Add shadow')}>
+      {sh && (
+        <>
+          <Row>
+            <NumField
+              label="X"
+              value={sh.x}
+              onLive={(v) => setFLive({ x: v })}
+              onEnd={end}
+              onCommit={(v) => setF({ x: v }, 'Shadow offset')}
+            />
+            <NumField
+              label="Y"
+              value={sh.y}
+              onLive={(v) => setFLive({ y: v })}
+              onEnd={end}
+              onCommit={(v) => setF({ y: v }, 'Shadow offset')}
+            />
+            <NumField
+              label="B"
+              min={0}
+              value={sh.blur}
+              onLive={(v) => setFLive({ blur: Math.max(0, v) })}
+              onEnd={end}
+              onCommit={(v) => setF({ blur: Math.max(0, v) }, 'Shadow blur')}
+            />
+          </Row>
+          <div className="flex items-center justify-between">
+            <span className="text-[12px] text-foreground/80">Color</span>
+            <div className="flex items-center gap-1.5">
+              <SwatchButton color={sh.color} onChange={(c) => setF({ color: c }, 'Shadow color')} />
+              <Hint label="Remove shadow">
+                <button
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={() => setProps([s.id], { [field]: undefined } as ShapePatch, 'Remove shadow')}
+                >
+                  <RemoveIcon size={13} />
+                </button>
+              </Hint>
+            </div>
+          </div>
+        </>
+      )}
+    </Section>
+  )
+}
+
+const FILTER_KINDS: Array<{ key: keyof Filters; label: string; def: number; min: number; max: number; suffix: string }> = [
+  { key: 'blur', label: 'Blur', def: 8, min: 0, max: 64, suffix: 'px' },
+  { key: 'brightness', label: 'Brightness', def: 110, min: 0, max: 300, suffix: '%' },
+  { key: 'contrast', label: 'Contrast', def: 110, min: 0, max: 300, suffix: '%' },
+  { key: 'grayscale', label: 'Grayscale', def: 100, min: 0, max: 100, suffix: '%' },
+  { key: 'hueRotate', label: 'Hue rotation', def: 45, min: 0, max: 360, suffix: '°' },
+  { key: 'invert', label: 'Invert', def: 100, min: 0, max: 100, suffix: '%' },
+  { key: 'saturate', label: 'Saturate', def: 120, min: 0, max: 300, suffix: '%' },
+  { key: 'sepia', label: 'Sepia', def: 100, min: 0, max: 100, suffix: '%' },
+]
+
+/** "+" menu listing the available filters, like the Figma filters popover. */
+function FilterAddMenu({ s }: { s: Shape }) {
+  const [open, setOpen] = useState(false)
+  const add = (k: (typeof FILTER_KINDS)[number]) => {
+    setProps([s.id], { filters: { ...(s.filters ?? {}), [k.key]: k.def } }, `Add ${k.label.toLowerCase()}`)
+    setOpen(false)
+  }
+  return (
+    <div className="relative">
+      <Hint label="Add filter">
+        <button onClick={() => setOpen((o) => !o)} className="text-muted-foreground hover:text-foreground">
+          <Plus size={13} />
+        </button>
+      </Hint>
+      {open && (
+        <div className="absolute right-0 top-full z-40 mt-1 w-[150px] rounded-xl border border-border bg-popover/95 py-1 shadow-2xl backdrop-blur">
+          {FILTER_KINDS.map((k) => (
+            <button
+              key={k.key}
+              onClick={() => add(k)}
+              className="block w-full px-2.5 py-1 text-left text-[12px] text-foreground/90 hover:bg-accent"
+            >
+              {k.label}
+            </button>
+          ))}
+          <div className="mx-2 my-1 h-px bg-border" />
+          {FILTER_KINDS.map((k) => (
+            <button
+              key={'b' + k.key}
+              disabled
+              className="block w-full px-2.5 py-1 text-left text-[12px] text-muted-foreground/40"
+            >
+              {`Backdrop ${k.label.toLowerCase()}`}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function FiltersSection({ s }: { s: Shape }) {
+  const f = s.filters
+  const { live, end } = useLiveTx()
+  const setF = (k: keyof Filters, v: number) => setProps([s.id], { filters: { ...f, [k]: v } }, 'Filter')
+  return (
+    <Section title="Filters" addSlot={<FilterAddMenu s={s} />}>
+      {f &&
+        FILTER_KINDS.filter((k) => f[k.key] != null).map((k) => (
+          <div key={k.key} className="flex items-center gap-1.5">
+            <span className="min-w-0 flex-1 truncate text-[12px] text-foreground/80">{k.label}</span>
+            <NumField
+              label={k.suffix}
+              min={k.min}
+              max={k.max}
+              value={f[k.key]!}
+              onLive={(v) =>
+                live(s.id, { filters: { ...f, [k.key]: Math.min(k.max, Math.max(k.min, v)) } }, 'Filter')
+              }
+              onEnd={end}
+              onCommit={(v) => setF(k.key, Math.min(k.max, Math.max(k.min, v)))}
+            />
+            <Hint label={`Remove ${k.label.toLowerCase()}`}>
+              <button
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  const next = { ...f }
+                  delete next[k.key]
+                  setProps([s.id], { filters: next }, `Remove ${k.label.toLowerCase()}`)
+                }}
+              >
+                <RemoveIcon size={13} />
+              </button>
+            </Hint>
+          </div>
+        ))}
+    </Section>
+  )
+}
+
+function MarginSection({ s }: { s: Shape }) {
+  const m = s.margin ?? { t: 0, r: 0, b: 0, l: 0 }
+  const { live, end } = useLiveTx()
+  const patch = (p: Partial<Margin>) => setProps([s.id], { margin: { ...m, ...p } }, 'Margin')
+  const patchLive = (p: Partial<Margin>) => live(s.id, { margin: { ...m, ...p } }, 'Margin')
+  return (
+    <Section title="Margin">
+      <Row>
+        <NumField label="T" min={0} value={m.t} onLive={(v) => patchLive({ t: Math.max(0, v) })} onEnd={end} onCommit={(v) => patch({ t: Math.max(0, v) })} />
+        <NumField label="R" min={0} value={m.r} onLive={(v) => patchLive({ r: Math.max(0, v) })} onEnd={end} onCommit={(v) => patch({ r: Math.max(0, v) })} />
+      </Row>
+      <Row>
+        <NumField label="B" min={0} value={m.b} onLive={(v) => patchLive({ b: Math.max(0, v) })} onEnd={end} onCommit={(v) => patch({ b: Math.max(0, v) })} />
+        <NumField label="L" min={0} value={m.l} onLive={(v) => patchLive({ l: Math.max(0, v) })} onEnd={end} onCommit={(v) => patch({ l: Math.max(0, v) })} />
+      </Row>
+    </Section>
+  )
+}
 
 const alignButtons: Array<{ icon: LucideIcon; edge: AlignEdge; tip: string }> = [
   { icon: AlignStartVertical, edge: 'left', tip: 'Align left' },
@@ -360,11 +671,45 @@ function AlignRow() {
 
 /* ------------------------------ panel ------------------------------ */
 
-/** Right-panel header: undo/redo + collapse toggle (the top bar is gone; sidebars carry everything). */
+/** Zoom percentage cluster for the right-panel header. */
+function ZoomCluster() {
+  const zoom = useUi((s) => s.camera.zoom)
+  const step = (factor: number) => {
+    const el = canvasEl.current
+    if (!el) return
+    const next = Math.min(16, Math.max(0.05, zoom * factor))
+    setZoomAroundCenter(next, el.getBoundingClientRect())
+  }
+  return (
+    <div className="flex items-center gap-0.5">
+      <Hint label="Zoom out">
+        <button
+          className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+          onClick={() => step(1 / 1.25)}
+        >
+          <Minus size={13} />
+        </button>
+      </Hint>
+      <span className="w-10 text-center font-mono text-[11px] text-foreground/90">{Math.round(zoom * 100)}%</span>
+      <Hint label="Zoom in">
+        <button
+          className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+          onClick={() => step(1.25)}
+        >
+          <Plus size={13} />
+        </button>
+      </Hint>
+    </div>
+  )
+}
+
+/** Right-panel header: undo/redo + zoom + collapse toggle (the top bar is gone; sidebars carry everything). */
 function PanelTop() {
   return (
     <div className="flex h-10 shrink-0 items-center gap-0.5 border-b border-border px-2">
       <UndoRedoButtons />
+      <div className="mx-1 h-4 w-px bg-border" />
+      <ZoomCluster />
       <div className="flex-1" />
       <Hint label="Hide properties panel">
         <button
@@ -389,15 +734,11 @@ export function PropertiesPanel() {
       <aside className={panelCls + ' hidden lg:flex'}>
         <PanelTop />
         <div className="border-b border-border px-3 py-2.5">
-          <h3 className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/80">Page</h3>
+          <h3 className="text-[11px] text-muted-foreground">Page</h3>
         </div>
         <Section title="Canvas">
           <CanvasBgField />
         </Section>
-        <div className="px-3 py-4 text-[11px] leading-relaxed text-muted-foreground/60">
-          Nothing selected. Press <kbd className="rounded border border-border bg-accent/60 px-1">R</kbd> and drag on
-          the canvas to draw, or click a shape to inspect it.
-        </div>
       </aside>
     )
   }
@@ -445,7 +786,7 @@ export function PropertiesPanel() {
             <AlignRow />
           </Section>
           {b && (
-            <Section title="Position">
+            <Section title="Position & size">
               <Row>
                 <NumField
                   label="X"
@@ -588,13 +929,35 @@ export function PropertiesPanel() {
               )}
             </Row>
           )}
+          {s.type !== 'line' && (
+            <Row>
+              <NumField
+                label="°"
+                min={-360}
+                max={360}
+                value={s.rotation ?? 0}
+                onLive={(v) => live(s.id, { rotation: Math.min(360, Math.max(-360, v)) }, 'Rotation')}
+                onEnd={end}
+                onCommit={(v) => commitProp({ rotation: Math.min(360, Math.max(-360, v)) }, 'Rotation')}
+              />
+            </Row>
+          )}
         </Section>
 
         {(s.type === 'rect' || s.type === 'ellipse' || s.type === 'frame') && (
           <Section title="Fill">
-            <ColorField shapeId={s.id} field="fill" label="Fill" value={s.fill} noneable />
+            <FillField s={s} />
           </Section>
         )}
+
+        {(s.type === 'rect' || s.type === 'ellipse' || s.type === 'frame' || s.type === 'image') && (
+          <>
+            <ShadowSection s={s} field="shadow" title="Shadow" />
+            <ShadowSection s={s} field="innerShadow" title="Inner shadow" />
+          </>
+        )}
+
+        {(s.type === 'rect' || s.type === 'ellipse' || s.type === 'frame') && <MarginSection s={s} />}
 
         {(s.type === 'line' || s.type === 'rect' || s.type === 'ellipse' || s.type === 'frame') && (
           <Section title={isLine ? 'Stroke' : 'Border'}>

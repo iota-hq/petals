@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { ChevronLeft, Circle, Eye, EyeOff, Frame, Image as ImageIcon, Lock, LockOpen, Minus, PanelLeft, Plus, Square, Type } from 'lucide-react'
+import { ChevronLeft, Circle, Eye, EyeOff, Frame, Image as ImageIcon, Lock, LockOpen, Minus, PanelLeft, Plus, Square, SquareDashed, Type } from 'lucide-react'
 import type { Shape, ShapeType } from '@/model/types'
 import { childrenSorted, subtreeIds, topOrderFor, ORDER_STEP } from '@/model/geometry'
 import { useDoc } from '@/store/docStore'
@@ -175,7 +175,7 @@ export function LeftPanel({ projectId }: { projectId: string }) {
 
         {/* Pages */}
         <div className="flex h-7 shrink-0 items-center justify-between pl-3 pr-1.5 pt-2">
-          <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/80">Pages</span>
+          <span className="text-[11px] text-muted-foreground">Pages</span>
           <Hint label="More pages soon">
             <button className="text-muted-foreground/70" disabled>
               <Plus size={13} />
@@ -186,13 +186,14 @@ export function LeftPanel({ projectId }: { projectId: string }) {
           <div className="flex h-6.5 items-center gap-2 rounded-md bg-accent px-2 text-[12px] text-foreground">Page 1</div>
         </div>
 
-        <div className="shrink-0 pb-1 pl-3 pt-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/80">Layers</div>
+        <div className="shrink-0 pb-1 pl-3 pt-1.5 text-[11px] text-muted-foreground">Layers</div>
 
         <div className="min-h-0 flex-1 overflow-y-auto pb-3 scrollbar-thin" style={drag ? { userSelect: 'none' } : undefined}>
           {rows.length === 0 && (
-            <p className="px-3 py-6 text-center text-[11px] text-muted-foreground/60">
-              Nothing here yet — draw something on the canvas.
-            </p>
+            <div className="flex flex-col items-center gap-2 px-3 py-10 text-center">
+              <SquareDashed size={22} className="text-muted-foreground/40" />
+              <span className="text-[11px] text-muted-foreground/50">No layers yet</span>
+            </div>
           )}
           {rows.map(({ s, depth }) => {
             const selected = selection.includes(s.id)

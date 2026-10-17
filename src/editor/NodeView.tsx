@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, memo, useRef } from 'react'
 import type { Shape } from '@/model/types'
 import { lineEnds, lineBox } from '@/model/geometry'
+import { filtersToCss, fillToCss, rotationToCss, shadowToCss } from '@/model/styles'
 import { useDoc } from '@/store/docStore'
 import { useUi } from '@/store/uiStore'
 import { commitTextEdit, setIntrinsicHeight, typeLive } from './commands'
@@ -8,6 +9,13 @@ import { commitTextEdit, setIntrinsicHeight, typeLive } from './commands'
 export type GroupMap = Map<string | null, Shape[]>
 
 const UI_FONT = '"Geist Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
+
+/** Style bits shared by every box-like shape: fill-extras, shadows, filters, rotation. */
+function boxShadowOf(s: Shape): string | undefined {
+  const outer = shadowToCss(s.shadow)
+  const inner = shadowToCss(s.innerShadow, true)
+  return [outer, inner].filter(Boolean).join(', ') || undefined
+}
 
 function sameChildren(a: Shape[] | undefined, b: Shape[] | undefined): boolean {
   if (a === b) return true
@@ -40,9 +48,12 @@ export const ShapeNode = memo(
               top: s.y,
               width: s.w,
               height: s.h,
-              background: s.fill ?? 'transparent',
+              background: fillToCss(s.fill),
               borderRadius: s.radius ?? 0,
               opacity: s.opacity,
+              transform: rotationToCss(s.rotation),
+              boxShadow: boxShadowOf(s),
+              filter: filtersToCss(s.filters),
               border: s.stroke ? `${s.strokeWidth ?? 1}px solid ${s.stroke}` : undefined,
             }}
           />
@@ -57,9 +68,12 @@ export const ShapeNode = memo(
               top: s.y,
               width: s.w,
               height: s.h,
-              background: s.fill ?? 'transparent',
+              background: fillToCss(s.fill),
               borderRadius: '50%',
               opacity: s.opacity,
+              transform: rotationToCss(s.rotation),
+              boxShadow: boxShadowOf(s),
+              filter: filtersToCss(s.filters),
               border: s.stroke ? `${s.strokeWidth ?? 1}px solid ${s.stroke}` : undefined,
             }}
           />
@@ -72,7 +86,18 @@ export const ShapeNode = memo(
             alt=""
             draggable={false}
             className="absolute select-none"
-            style={{ left: s.x, top: s.y, width: s.w, height: s.h, objectFit: s.fit ?? 'cover', borderRadius: s.radius ?? 0, opacity: s.opacity }}
+            style={{
+              left: s.x,
+              top: s.y,
+              width: s.w,
+              height: s.h,
+              objectFit: s.fit ?? 'cover',
+              borderRadius: s.radius ?? 0,
+              opacity: s.opacity,
+              transform: rotationToCss(s.rotation),
+              boxShadow: boxShadowOf(s),
+              filter: filtersToCss(s.filters),
+            }}
           />
         ) : null
       case 'line':
@@ -86,8 +111,24 @@ export const ShapeNode = memo(
 
 function FrameView({ s, group }: { s: Shape; group: GroupMap }) {
   const kids = group.get(s.id) ?? []
+  const mL = s.margin?.l ?? 0
+  const mT = s.margin?.t ?? 0
+  const mR = s.margin?.r ?? 0
+  const mB = s.margin?.b ?? 0
   return (
-    <div data-node-id={s.id} className="absolute" style={{ left: s.x, top: s.y, width: s.w, height: s.h, opacity: s.opacity }}>
+    <div
+      data-node-id={s.id}
+      className="absolute"
+      style={{
+        left: s.x,
+        top: s.y,
+        width: s.w,
+        height: s.h,
+        opacity: s.opacity,
+        transform: rotationToCss(s.rotation),
+        filter: filtersToCss(s.filters),
+      }}
+    >
       <div
         style={{
           position: 'absolute',
@@ -108,15 +149,27 @@ function FrameView({ s, group }: { s: Shape; group: GroupMap }) {
         style={{
           position: 'absolute',
           inset: 0,
-          background: s.fill ?? 'transparent',
+          background: fillToCss(s.fill),
           borderRadius: s.radius ?? 0,
           overflow: s.clip ? 'hidden' : 'visible',
+          boxShadow: boxShadowOf(s),
           border: s.stroke ? `${s.strokeWidth ?? 1}px solid ${s.stroke}` : undefined,
         }}
       >
-        {kids.map((c) => (
-          <ShapeNode key={c.id} s={c} group={group} />
-        ))}
+        {/* content box — children coords are relative to the margin-inset origin */}
+        <div
+          style={{
+            position: 'absolute',
+            left: mL,
+            top: mT,
+            width: Math.max(0, s.w - mL - mR),
+            height: Math.max(0, s.h - mT - mB),
+          }}
+        >
+          {kids.map((c) => (
+            <ShapeNode key={c.id} s={c} group={group} />
+          ))}
+        </div>
       </div>
     </div>
   )
@@ -222,6 +275,8 @@ function TextView({ s }: { s: Shape }) {
         whiteSpace: 'pre-wrap',
         wordBreak: 'break-word',
         position: 'absolute',
+        transform: rotationToCss(s.rotation),
+        filter: filtersToCss(s.filters),
         ...(editing
           ? { contentEditable: true as unknown as string, suppressContentEditableWarning: true as never, outline: 'none', cursor: 'text' }
           : {}),

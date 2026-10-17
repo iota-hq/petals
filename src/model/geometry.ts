@@ -58,6 +58,8 @@ export function boxOf(s: Shape): Rect {
 /**
  * Summed offset of the ancestor chain for a node whose parent is `parentId`.
  * Page pos of a nested shape = parentOffset + local (x,y).
+ * Frame margins count in: children coordinates are relative to the frame's
+ * content box, whose origin is offset by margin.l / margin.t.
  */
 export function offsetForParent(nodes: Record<string, Shape>, parentId: string | null): Vec {
   let x = 0
@@ -65,8 +67,8 @@ export function offsetForParent(nodes: Record<string, Shape>, parentId: string |
   let cur = parentId ? nodes[parentId] : undefined
   let guard = 0
   while (cur && guard++ < 64) {
-    x += cur.x
-    y += cur.y
+    x += cur.x + (cur.margin?.l ?? 0)
+    y += cur.y + (cur.margin?.t ?? 0)
     cur = cur.parentId ? nodes[cur.parentId] : undefined
   }
   return { x, y }

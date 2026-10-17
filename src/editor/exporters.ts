@@ -1,6 +1,7 @@
 import type { Shape } from '@/model/types'
 import { boundsOfRects, lineEnds, pageAABB, selectionRoots, subtreeIds } from '@/model/geometry'
 import type { Rect } from '@/model/geometry'
+import { filtersToCss, gradientVector, withAlpha } from '@/model/styles'
 import { useDoc } from '@/store/docStore'
 import { useUi } from '@/store/uiStore'
 
@@ -35,6 +36,14 @@ function absBox(s: Shape, ox: number, oy: number): Rect {
   return { x: ox + s.x, y: oy + s.y, w: s.w, h: s.h }
 }
 
+/** Margin-aware children offsets: child coords live in the frame's content box. */
+function childOffset(s: Shape, ox: number, oy: number): { ox: number; oy: number } {
+  return {
+    ox: ox + s.x + (s.margin?.l ?? 0),
+    oy: oy + s.y + (s.margin?.t ?? 0),
+  }
+}
+
 function childrenSortedOf(nodes: Record<string, Shape>, parentId: string): Shape[] {
   const out: Shape[] = []
   for (const s of Object.values(nodes)) if (s.parentId === parentId) out.push(s)
@@ -47,6 +56,75 @@ function selectionSnapshot(): { nodes: Record<string, Shape>; roots: string[] } 
   const roots = selectionRoots(nodes, useUi.getState().selection)
   if (!roots.length) return null
   return { nodes, roots }
+}
+
+/* ------------------------------ style helpers ------------------------------ */
+
+type FillPaint = string | CanvasGradient | null
+
+function canvasFill(ctx: CanvasRenderingContext2D, fill: Shape['fill'], b: Rect): FillPaint {
+  if (!fill) return null
+  if (typeof fill === 'string') return fill !== 'transparent' ? fill : null
+  const stops = fill.stops
+  if (!stops.length) return null
+  const v = gradientVector(fill.angle, b.w, b.h)
+  const grad =
+    fill.type === 'radial'
+      ? ctx.createRadialGradient(b.x + b.w / 2, b.y + b.h / 2, 0, b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h) / 2)
+      : ctx.createLinearGradient(b.x + v.x0, b.y + v.y0, b.x + v.x1, b.y + v.y1)
+  for (const st of stops.slice().sort((a, b2) => a.pos - b2.pos)) {
+    grad.addColorStop(Math.min(1, Math.max(0, st.pos / 100)), withAlpha(st.color, st.alpha))
+  }
+  return grad
+}
+
+function shapePath(ctx: CanvasRenderingContext2D, s: Shape, b: Rect): Path2D {
+  const p = new Path2D()
+  if (s.type === 'ellipse') {
+    p.ellipse(b.x + b.w / 2, b.y + b.h / 2, Math.max(0.5, b.w / 2), Math.max(0.5, b.h / 2), 0, 0, Math.PI * 2)
+  } else {
+    p.roundRect(b.x, b.y, b.w, b.h, s.radius ?? 0)
+  }
+  return p
+}
+
+/** css filter expressions incl. an outer drop-shadow, for canvas ctx.filter and SVG style. */
+function cssFilterChain(s: Shape): string {
+  const parts: string[] = []
+  const chain = filtersToCss(s.filters)
+  if (chain) parts.push(chain)
+  const sh = s.shadow
+  if (sh) parts.push(`drop-shadow(${sh.x}px ${sh.y}px ${sh.blur}px ${sh.color})`)
+  return parts.join(' ')
+}
+
+/** Emulates an inner shadow inside the shape by stroking a wide transparent line under a clip. */
+function innerShadowStroke(
+  ctx: CanvasRenderingContext2D,
+  path: Path2D,
+  s: Shape,
+) {
+  const sh = s.innerShadow
+  if (!sh) return
+  ctx.save()
+  ctx.clip(path)
+  ctx.shadowColor = sh.color
+  ctx.shadowOffsetX = sh.x
+  ctx.shadowOffsetY = sh.y
+  ctx.shadowBlur = sh.blur
+  ctx.strokeStyle = 'rgba(0,0,0,0)'
+  ctx.lineWidth = sh.blur * 2
+  ctx.stroke(path)
+  ctx.restore()
+}
+
+function applyRotation(ctx: CanvasRenderingContext2D, rotation: number | undefined, b: Rect) {
+  if (!rotation) return
+  const cx = b.x + b.w / 2
+  const cy = b.y + b.h / 2
+  ctx.translate(cx, cy)
+  ctx.rotate((rotation * Math.PI) / 180)
+  ctx.translate(-cx, -cy)
 }
 
 /* ------------------------------ PNG ------------------------------ */
@@ -62,58 +140,63 @@ async function paintShape(
   if (!s.visible || s.opacity === 0) return
   ctx.save()
   ctx.globalAlpha = s.opacity
+  ctx.filter = cssFilterChain(s) || 'none'
 
   if (s.type === 'frame') {
     const b = absBox(s, ox, oy)
-    if (s.fill && s.fill !== 'transparent') {
-      ctx.fillStyle = s.fill
-      if (s.radius) {
-        ctx.beginPath()
-        ctx.roundRect(b.x, b.y, b.w, b.h, s.radius)
-        ctx.fill()
-      } else ctx.fillRect(b.x, b.y, b.w, b.h)
+    applyRotation(ctx, s.rotation, b)
+    const paint = canvasFill(ctx, s.fill, b)
+    const path = shapePath(ctx, s, b)
+    if (paint) {
+      ctx.fillStyle = paint
+      ctx.fill(path)
     }
-    if (s.clip) {
-      ctx.beginPath()
-      ctx.rect(b.x, b.y, b.w, b.h)
-      ctx.clip()
+    if (s.stroke) {
+      ctx.lineWidth = s.strokeWidth ?? 1
+      ctx.strokeStyle = s.stroke
+      ctx.stroke(path)
     }
-    for (const c of childrenSortedOf(nodes, s.id)) paintShape(ctx, nodes, c, images, ox + s.x, oy + s.y)
+    innerShadowStroke(ctx, path, s)
+    const { ox: cx, oy: cy } = childOffset(s, ox, oy)
+    for (const c of childrenSortedOf(nodes, s.id)) await paintShape(ctx, nodes, c, images, cx, cy)
     ctx.restore()
     return
   }
 
   if (s.type === 'rect') {
     const b = absBox(s, ox, oy)
-    const r = Math.min(s.radius ?? 0, Math.min(b.w, b.h) / 2)
-    ctx.beginPath()
-    ctx.roundRect(b.x, b.y, b.w, b.h, r)
-    if (s.fill && s.fill !== 'transparent') {
-      ctx.fillStyle = s.fill
-      ctx.fill()
+    applyRotation(ctx, s.rotation, b)
+    const path = shapePath(ctx, s, b)
+    const paint = canvasFill(ctx, s.fill, b)
+    if (paint) {
+      ctx.fillStyle = paint
+      ctx.fill(path)
     }
     if (s.stroke) {
       ctx.lineWidth = s.strokeWidth ?? 1
       ctx.strokeStyle = s.stroke
-      ctx.stroke()
+      ctx.stroke(path)
     }
+    innerShadowStroke(ctx, path, s)
     ctx.restore()
     return
   }
 
   if (s.type === 'ellipse') {
     const b = absBox(s, ox, oy)
-    ctx.beginPath()
-    ctx.ellipse(b.x + b.w / 2, b.y + b.h / 2, Math.max(0.5, b.w / 2), Math.max(0.5, b.h / 2), 0, 0, Math.PI * 2)
-    if (s.fill && s.fill !== 'transparent') {
-      ctx.fillStyle = s.fill
-      ctx.fill()
+    applyRotation(ctx, s.rotation, b)
+    const path = shapePath(ctx, s, b)
+    const paint = canvasFill(ctx, s.fill, b)
+    if (paint) {
+      ctx.fillStyle = paint
+      ctx.fill(path)
     }
     if (s.stroke) {
       ctx.lineWidth = s.strokeWidth ?? 1
       ctx.strokeStyle = s.stroke
-      ctx.stroke()
+      ctx.stroke(path)
     }
+    innerShadowStroke(ctx, path, s)
     ctx.restore()
     return
   }
@@ -133,8 +216,10 @@ async function paintShape(
 
   if (s.type === 'image') {
     const b = absBox(s, ox, oy)
+    applyRotation(ctx, s.rotation, b)
     const src = s.src
     const img = src ? (images.get(src) ?? (await loadImage(src).then((i) => (images.set(src, i), i)))) : null
+    const path = shapePath(ctx, s, b)
     if (img) {
       const iw = img.naturalWidth
       const ih = img.naturalHeight
@@ -142,31 +227,32 @@ async function paintShape(
       let sx = 0
       let sy = 0
       let sw = iw
-      let sh = ih
+      let sh2 = ih
       if (fit === 'cover') {
         const scale = Math.max(b.w / iw, b.h / ih)
         sw = b.w / scale
-        sh = b.h / scale
+        sh2 = b.h / scale
         sx = (iw - sw) / 2
-        sy = (ih - sh) / 2
+        sy = (ih - sh2) / 2
       }
-      ctx.beginPath()
-      ctx.roundRect(b.x, b.y, b.w, b.h, s.radius ?? 0)
       ctx.save()
-      if (s.radius) {
-        ctx.clip()
-        ctx.drawImage(img, sx, sy, sw, sh, b.x, b.y, b.w, b.h)
-      } else {
-        ctx.drawImage(img, sx, sy, sw, sh, b.x, b.y, b.w, b.h)
-      }
+      ctx.clip(path)
+      ctx.drawImage(img, sx, sy, sw, sh2, b.x, b.y, b.w, b.h)
       ctx.restore()
     }
+    if (s.stroke) {
+      ctx.lineWidth = s.strokeWidth ?? 1
+      ctx.strokeStyle = s.stroke
+      ctx.stroke(path)
+    }
+    innerShadowStroke(ctx, path, s)
     ctx.restore()
     return
   }
 
   if (s.type === 'text') {
     const b = absBox(s, ox, oy)
+    applyRotation(ctx, s.rotation, b)
     const fontSize = s.fontSize ?? 24
     const lh = fontSize * (s.lineHeight ?? 1.4)
     ctx.font = `${s.fontWeight ?? 500} ${fontSize}px ${s.fontFamily ?? UI_FONT}`
@@ -246,6 +332,33 @@ function esc(v: string): string {
   return v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+function gradientDefs(fill: Exclude<Shape['fill'], undefined>, idPrefix: string): string {
+  if (typeof fill === 'string' || !fill.stops.length) return ''
+  const W = 1
+  const H = 1
+  const v = gradientVector(fill.angle, W, H)
+  const stops = fill.stops
+    .slice()
+    .sort((a, b2) => a.pos - b2.pos)
+    .map((st) => `<stop offset="${Math.min(1, Math.max(0, st.pos / 100))}" stop-color="${esc(st.color)}" stop-opacity="${st.alpha}"/>`)
+    .join('')
+  if (fill.type === 'radial') {
+    return `<radialGradient id="${idPrefix}" cx="0.5" cy="0.5" r="0.5">${stops}</radialGradient>`
+  }
+  return `<linearGradient id="${idPrefix}" x1="${v.x0 / W}" y1="${v.y0 / H}" x2="${v.x1 / W}" y2="${v.y1 / H}">${stops}</linearGradient>`
+}
+
+function svgFillAttr(fill: Shape['fill'], id: string): string {
+  if (!fill) return ' fill="none"'
+  if (typeof fill === 'string') return fill !== 'transparent' ? ` fill="${fill}"` : ' fill="none"'
+  return ` fill="url(#${id})"`
+}
+
+function svgStyleAttr(s: Shape): string {
+  const f = cssFilterChain(s)
+  return f ? ` style="filter:${f}"` : ''
+}
+
 function shapeToSvg(
   nodes: Record<string, Shape>,
   s: Shape,
@@ -254,11 +367,20 @@ function shapeToSvg(
   out: string[],
   clips: string[],
   clipIndex: { n: number },
+  defs: string[],
 ) {
   if (!s.visible || s.opacity === 0) return
   const b = absBox(s, ox, oy)
   const op = s.opacity < 1 ? ` opacity="${s.opacity}"` : ''
-  const stroke = s.stroke ? ` stroke="${esc(s.stroke)}" stroke-width="${s.strokeWidth ?? 1}"` : ''
+  const stroke = s.stroke ? ` stroke="${s.stroke}" stroke-width="${s.strokeWidth ?? 1}"` : ''
+  let gradId: string | null = null
+  if (s.fill && typeof s.fill === 'object') {
+    gradId = `grad${clipIndex.n++}`
+    const def = gradientDefs(s.fill, gradId)
+    if (def) defs.push(def)
+  }
+  const styleAttr = svgStyleAttr(s)
+  const rot = s.rotation ? ` transform="rotate(${s.rotation} ${b.x + b.w / 2} ${b.y + b.h / 2})"` : ''
 
   if (s.type === 'frame') {
     let clipAttr = ''
@@ -268,30 +390,42 @@ function shapeToSvg(
       clips.push(`<clipPath id="${id}"><rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}"${rx}/></clipPath>`)
       clipAttr = ` clip-path="url(#${id})"`
     }
-    const fill = s.fill && s.fill !== 'transparent' ? ` fill="${esc(s.fill)}"` : ' fill="none"'
+    const fill = svgFillAttr(s.fill, gradId!)
     const rx = s.radius ? ` rx="${Math.min(s.radius, Math.min(b.w, b.h) / 2)}"` : ''
-    out.push(`<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}"${rx}${fill}${stroke ? stroke.replace('stroke-width', 'stroke-width') : ''}${op}${clipAttr}/>`)
-    for (const c of childrenSortedOf(nodes, s.id)) shapeToSvg(nodes, c, ox + s.x, oy + s.y, out, clips, clipIndex)
+    out.push(
+      `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}"${rx}${fill}${stroke}${op}${clipAttr}${rot}${styleAttr}/>`,
+    )
+    for (const c of childrenSortedOf(nodes, s.id)) {
+      const { ox: cx, oy: cy } = childOffset(s, ox, oy)
+      shapeToSvg(nodes, c, cx, cy, out, clips, clipIndex, defs)
+    }
     return
   }
   if (s.type === 'rect') {
-    const fill = s.fill && s.fill !== 'transparent' ? ` fill="${esc(s.fill)}"` : ' fill="none"'
-    out.push(`<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${Math.min(s.radius ?? 0, Math.min(b.w, b.h) / 2)}"${fill}${stroke}${op}/>`)
+    const fill = svgFillAttr(s.fill, gradId!)
+    out.push(
+      `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${Math.min(s.radius ?? 0, Math.min(b.w, b.h) / 2)}"${fill}${stroke}${op}${rot}${styleAttr}/>`,
+    )
     return
   }
   if (s.type === 'ellipse') {
-    const fill = s.fill && s.fill !== 'transparent' ? ` fill="${esc(s.fill)}"` : ' fill="none"'
-    out.push(`<ellipse cx="${b.x + b.w / 2}" cy="${b.y + b.h / 2}" rx="${Math.max(0.5, b.w / 2)}" ry="${Math.max(0.5, b.h / 2)}"${fill}${stroke}${op}/>`)
+    const fill = svgFillAttr(s.fill, gradId!)
+    out.push(
+      `<ellipse cx="${b.x + b.w / 2}" cy="${b.y + b.h / 2}" rx="${Math.max(0.5, b.w / 2)}" ry="${Math.max(0.5, b.h / 2)}"${fill}${stroke}${op}${rot}${styleAttr}/>`,
+    )
     return
   }
   if (s.type === 'line') {
     const e = lineEnds(s)
-    out.push(`<line x1="${ox + e.x1}" y1="${oy + e.y1}" x2="${ox + e.x2}" y2="${oy + e.y2}" stroke="${esc(s.stroke ?? '#ececf1')}" stroke-width="${s.strokeWidth ?? 2}" stroke-linecap="round"${op}/>`)
+    out.push(
+      `<line x1="${ox + e.x1}" y1="${oy + e.y1}" x2="${ox + e.x2}" y2="${oy + e.y2}" stroke="${s.stroke ?? '#ececf1'}" stroke-width="${s.strokeWidth ?? 2}" stroke-linecap="round"${op}${styleAttr}/>`,
+    )
     return
   }
   if (s.type === 'image' && s.src) {
-    out.push(`<image x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" preserveAspectRatio="${s.fit === 'contain' ? 'xMidYMid meet' : 'xMidYMid slice'}" href="${s.src}"${s.radius ? ` clip-path="url(#clipr)"` : ''}${op}/>`)
-    if (s.radius) out.push(`<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${s.radius}" fill="none"/>`)
+    out.push(
+      `<image x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" preserveAspectRatio="${s.fit === 'contain' ? 'xMidYMid meet' : 'xMidYMid slice'}" href="${s.src}"${op}${rot}${styleAttr}/>`,
+    )
     return
   }
   if (s.type === 'text') {
@@ -304,7 +438,9 @@ function shapeToSvg(
       .split('\n')
       .map((line, i) => `<tspan x="${tx}" y="${b.y + i * lh + fontSize * 0.82}">${esc(line)}</tspan>`)
       .join('')
-    out.push(`<text font-family="${esc(family)}" font-size="${fontSize}" font-weight="${s.fontWeight ?? 500}" text-anchor="${anchor}" fill="${esc(s.color ?? '#ececf1')}"${op}>${tspans}</text>`)
+    out.push(
+      `<text font-family="${esc(family)}" font-size="${fontSize}" font-weight="${s.fontWeight ?? 500}" text-anchor="${anchor}" fill="${esc(s.color ?? '#ececf1')}"${op}${rot}${styleAttr}>${tspans}</text>`,
+    )
     return
   }
 }
@@ -324,10 +460,11 @@ export function exportSelectionSVG() {
 
   const body: string[] = []
   const clips: string[] = []
+  const defs: string[] = []
   const clipIndex = { n: 0 }
-  for (const root of roots) shapeToSvg(nodes, nodes[root], 0, 0, body, clips, clipIndex)
+  for (const root of roots) shapeToSvg(nodes, nodes[root], 0, 0, body, clips, clipIndex, defs)
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(b.w)}" height="${Math.round(b.h)}" viewBox="${b.x} ${b.y} ${b.w} ${b.h}">${clips.join('')}${body.join('')}</svg>`
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(b.w)}" height="${Math.round(b.h)}" viewBox="${b.x} ${b.y} ${b.w} ${b.h}">${defs.join('')}${clips.join('')}${body.join('')}</svg>`
 
   const blob = new Blob([svg], { type: 'image/svg+xml' })
   const a = document.createElement('a')

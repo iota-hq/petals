@@ -2,6 +2,47 @@ export type ShapeType = 'frame' | 'rect' | 'ellipse' | 'line' | 'text' | 'image'
 export type Align = 'left' | 'center' | 'right'
 export type Fit = 'cover' | 'contain'
 
+/** One gradient color stop. pos is 0..100 along the gradient axis. */
+export interface GradientStop {
+  color: string
+  alpha: number
+  pos: number
+}
+
+export interface Gradient {
+  type: 'linear' | 'radial'
+  /** degrees, CSS conventions: 0 = bottom→top, 90 = left→right */
+  angle: number
+  stops: GradientStop[]
+}
+
+export interface ShadowStyle {
+  x: number
+  y: number
+  blur: number
+  color: string
+}
+
+/** CSS-filter equivalent list (units in px / % / deg at render time). */
+export type Filters = Partial<{
+  blur: number
+  brightness: number
+  contrast: number
+  grayscale: number
+  hueRotate: number
+  invert: number
+  saturate: number
+  sepia: number
+}>
+
+/** Frame content-box inset (like CSS padding). */
+export interface Margin {
+  t: number
+  r: number
+  b: number
+  l: number
+}
+
 /**
  * Flat, normalized shape record.
  * Coordinates are relative to the parent (page origin when parentId is null),
@@ -22,7 +63,8 @@ export interface Shape {
   visible: boolean
   locked: boolean
   // rect / ellipse / image / frame
-  fill?: string
+  fill?: string | Gradient
+  rotation?: number
   radius?: number
   // rect / frame
   clip?: boolean
@@ -33,6 +75,12 @@ export interface Shape {
   y2?: number
   stroke?: string
   strokeWidth?: number
+  // rect / ellipse / frame / image / text
+  shadow?: ShadowStyle
+  innerShadow?: ShadowStyle
+  filters?: Filters
+  // frame content-box inset
+  margin?: Margin
   // text
   text?: string
   fontSize?: number

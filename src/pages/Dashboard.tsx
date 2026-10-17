@@ -51,7 +51,7 @@ export default function Dashboard() {
 
       <main className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">
         <div className="mx-auto max-w-6xl px-6 py-8">
-          <h2 className="mb-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">Files</h2>
+          <h2 className="mb-4 text-xs font-medium text-muted-foreground">Files</h2>
 
           {sorted.length === 0 ? (
             <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-border py-24 text-center">

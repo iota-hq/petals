@@ -1,5 +1,6 @@
 import { memo, type ReactNode } from 'react'
 import { lineEnds, normRect, offsetForParent, pageAABB, selectionRoots } from '@/model/geometry'
+import { rotationToCss } from '@/model/styles'
 import { useDoc } from '@/store/docStore'
 import { useUi } from '@/store/uiStore'
 
@@ -35,6 +36,11 @@ function handleStyle(left: number, top: number): React.CSSProperties {
   }
 }
 
+/** Handles rotate around the selection center together with the shape. */
+function handleTransform(left: number, top: number, rot: string): string {
+  return `translate(-50%,-50%) ${rot}`
+}
+
 /** All editor chrome drawn in page-space; the container inherits the camera transform. */
 export const SelectionOverlay = memo(function SelectionOverlay() {
   const selection = useUi((s) => s.selection)
@@ -45,14 +51,17 @@ export const SelectionOverlay = memo(function SelectionOverlay() {
 
   const editing = editingText !== null
   const roots = selectionRoots(nodes, selection)
-  const rects = roots.map((id) => nodes[id]).filter(Boolean).map((s) => pageAABB(nodes, s!))
   const single = roots.length === 1 && !gesture ? (nodes[roots[0]] ?? null) : null
 
   const pieces: ReactNode[] = []
   let k = 0
 
   // selection outlines
-  for (const r of rects) {
+  // selection outlines (rotation-conscious: same box the node renders)
+  for (const root of roots) {
+    const sRoot = nodes[root]
+    if (!sRoot) continue
+    const r = pageAABB(nodes, sRoot)
     pieces.push(
       <div
         key={`o${k++}`}
@@ -62,6 +71,7 @@ export const SelectionOverlay = memo(function SelectionOverlay() {
           top: r.y,
           width: r.w,
           height: r.h,
+          transform: rotationToCss(sRoot.rotation),
           border: `${STROKE} solid #f472b6`,
           pointerEvents: 'none',
         }}
@@ -72,6 +82,7 @@ export const SelectionOverlay = memo(function SelectionOverlay() {
   // resize handles for single selection
   if (single && !editing) {
     const r = pageAABB(nodes, single)
+    const rot = rotationToCss(single.rotation)
     const handles: Array<[string, number, number]> = [
       ['nw', r.x, r.y],
       ['n', r.x + r.w / 2, r.y],
@@ -84,7 +95,16 @@ export const SelectionOverlay = memo(function SelectionOverlay() {
     ]
     for (const [h, x, y] of handles) {
       pieces.push(
-        <div key={`h${k++}`} data-handle={h} data-node-id={single.id} className={cursorFor[h]} style={handleStyle(x, y)} />,
+        <div
+          key={`h${k++}`}
+          data-handle={h}
+          data-node-id={single.id}
+          className={cursorFor[h]}
+          style={{
+            ...handleStyle(x, y),
+            ...(rot ? { transformOrigin: `${r.x + r.w / 2 - x}px ${r.y + r.h / 2 - y}px`, transform: handleTransform(x, y, rot) } : {}),
+          }}
+        />,
       )
     }
   }
