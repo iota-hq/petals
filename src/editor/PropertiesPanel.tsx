@@ -34,6 +34,7 @@ import { useDoc, type Tx } from '@/store/docStore'
 import { useUi, DEFAULT_CANVAS_BG, setZoomAroundCenter } from '@/store/uiStore'
 import { fileToImageSrc, addImageFile, alignSelection, canvasEl, nudge, setProps, type AlignEdge } from './commands'
 import { exportSelectionEPS, exportSelectionPNG, exportSelectionRaster, exportSelectionSVG } from './exporters'
+import { IconBlur, IconGradientFill, IconImageFill, IconMargin, IconOpacity, IconRadius, IconRotate, IconSolidFill, IconSpread, IconStroke } from './proIcons'
 import { UndoRedoButtons } from './UndoRedoButtons'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -183,7 +184,8 @@ function useLiveTx() {
 /* ------------------------------ fields ------------------------------ */
 
 interface NumFieldProps {
-  label: string
+  label?: string
+  icon?: ReactNode
   value: number
   /** displayed = stored × scale (e.g. opacity stored 0..1 → scale 100) */
   scale?: number
@@ -207,6 +209,7 @@ const clampField = (v: number, min?: number, max?: number) => {
 
 function NumField({
   label,
+  icon,
   value,
   scale = 1,
   step = 1,
@@ -257,16 +260,29 @@ function NumField({
           : 'flex min-w-0 flex-1 items-center gap-1 rounded-md border border-transparent bg-[#2b2b2b] px-1.5 py-0.5 transition-colors hover:border-border focus-within:border-ring'
       }
     >
-      <span
-        className={
-          'shrink-0 select-none text-center text-[11px] ' +
-          (label.length > 2 ? 'px-0.5 ' : 'w-3.5 ') +
-          (canScrub ? 'cursor-ew-resize text-muted-foreground' : 'text-muted-foreground/70')
-        }
-        onPointerDown={startScrub}
-      >
-        {label}
-      </span>
+      {icon && (
+        <span
+          className={
+            'flex w-4 shrink-0 select-none items-center justify-center text-[11px] ' +
+            (canScrub ? 'cursor-ew-resize text-muted-foreground' : 'text-muted-foreground/70')
+          }
+          onPointerDown={startScrub}
+        >
+          {icon}
+        </span>
+      )}
+      {!icon && label !== undefined && (
+        <span
+          className={
+            'shrink-0 select-none text-center text-[11px] ' +
+            (label.length > 2 ? 'px-0.5 ' : 'w-3.5 ') +
+            (canScrub ? 'cursor-ew-resize text-muted-foreground' : 'text-muted-foreground/70')
+          }
+          onPointerDown={startScrub}
+        >
+          {label}
+        </span>
+      )}
       <Input
         type="text"
         inputMode="decimal"
@@ -652,13 +668,15 @@ const PLACEHOLDER_IMAGE =
     `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="360"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f472b6"/><stop offset="0.55" stop-color="#a855f7"/><stop offset="1" stop-color="#312e81"/></linearGradient></defs><rect width="480" height="360" fill="#231f28"/><circle cx="150" cy="150" r="88" fill="url(#g)"/><circle cx="330" cy="240" r="120" fill="url(#g)" opacity="0.65"/><circle cx="330" cy="110" r="60" fill="url(#g)" opacity="0.45"/></svg>`,
   )
 
-/** Segmented mode switcher row. */
+/** Segmented mode switcher row (icon or text labels; optional native titles for icon-only modes). */
 function Seg<T extends string>({
   options,
   value,
   onChange,
+  titles,
 }: {
-  options: readonly (readonly [T, string])[]
+  options: readonly (readonly [T, ReactNode])[]
+  titles?: Partial<Record<T, string>>
   value: T
   onChange: (v: T) => void
 }) {
@@ -667,9 +685,10 @@ function Seg<T extends string>({
       {options.map(([m, label]) => (
         <button
           key={m}
+          title={titles?.[m]}
           onClick={() => onChange(m)}
           className={
-            'flex-1 cursor-pointer rounded-md px-2 py-1 text-[12px] font-medium transition-colors ' +
+            'flex flex-1 cursor-pointer items-center justify-center gap-1 rounded-md px-2 py-1 text-[12px] font-medium transition-colors ' +
             (value === m ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-accent hover:text-foreground')
           }
         >
@@ -820,11 +839,12 @@ function FillField({ s }: { s: Shape }) {
       <Seg
         options={
           [
-            ['solid', 'Solid'],
-            ['gradient', 'Gradient'],
-            ['image', 'Image'],
+            ['solid', <IconSolidFill size={13} />],
+            ['gradient', <IconGradientFill size={13} />],
+            ['image', <IconImageFill size={13} />],
           ] as const
         }
+        titles={{ solid: 'Solid', gradient: 'Gradient', image: 'Image' }}
         value={mode}
         onChange={pick}
       />
@@ -1014,7 +1034,7 @@ function ShadowSection({ s, field, title }: { s: Shape; field: 'shadow' | 'inner
               onCommit={(v) => setF({ y: v }, 'Shadow offset')}
             />
             <NumField
-              label="Blur"
+              icon={<IconBlur />}
               min={0}
               value={sh.blur}
               onLive={(v) => setFLive({ blur: Math.max(0, v) })}
@@ -1022,7 +1042,7 @@ function ShadowSection({ s, field, title }: { s: Shape; field: 'shadow' | 'inner
               onCommit={(v) => setF({ blur: Math.max(0, v) }, 'Shadow blur')}
             />
             <NumField
-              label="S"
+              icon={<IconSpread />}
               value={sh.spread ?? 0}
               onLive={(v) => setFLive({ spread: v })}
               onEnd={end}
@@ -1137,12 +1157,12 @@ function MarginSection({ s }: { s: Shape }) {
   return (
     <Section title="Margin">
       <Row>
-        <NumField label="T" min={0} value={m.t} onLive={(v) => patchLive({ t: Math.max(0, v) })} onEnd={end} onCommit={(v) => patch({ t: Math.max(0, v) })} />
-        <NumField label="R" min={0} value={m.r} onLive={(v) => patchLive({ r: Math.max(0, v) })} onEnd={end} onCommit={(v) => patch({ r: Math.max(0, v) })} />
+        <NumField icon={<IconMargin dir="top" />} min={0} value={m.t} onLive={(v) => patchLive({ t: Math.max(0, v) })} onEnd={end} onCommit={(v) => patch({ t: Math.max(0, v) })} />
+        <NumField icon={<IconMargin dir="right" />} min={0} value={m.r} onLive={(v) => patchLive({ r: Math.max(0, v) })} onEnd={end} onCommit={(v) => patch({ r: Math.max(0, v) })} />
       </Row>
       <Row>
-        <NumField label="B" min={0} value={m.b} onLive={(v) => patchLive({ b: Math.max(0, v) })} onEnd={end} onCommit={(v) => patch({ b: Math.max(0, v) })} />
-        <NumField label="L" min={0} value={m.l} onLive={(v) => patchLive({ l: Math.max(0, v) })} onEnd={end} onCommit={(v) => patch({ l: Math.max(0, v) })} />
+        <NumField icon={<IconMargin dir="bottom" />} min={0} value={m.b} onLive={(v) => patchLive({ b: Math.max(0, v) })} onEnd={end} onCommit={(v) => patch({ b: Math.max(0, v) })} />
+        <NumField icon={<IconMargin dir="left" />} min={0} value={m.l} onLive={(v) => patchLive({ l: Math.max(0, v) })} onEnd={end} onCommit={(v) => patch({ l: Math.max(0, v) })} />
       </Row>
     </Section>
   )
@@ -1175,7 +1195,7 @@ function BorderSection({
     >
       <Row>
         <NumField
-          label="W"
+          icon={<IconStroke />}
           min={1}
           value={s.strokeWidth ?? 1}
           onLive={(v) => live(s.id, { strokeWidth: Math.max(1, v) }, 'Stroke width')}
@@ -1339,7 +1359,7 @@ function RadiusField({
         </>
       ) : (
         <>
-          <NumField key="r" label="R" min={0} value={r} onLive={(v) => live(s.id, { radius: Math.max(0, v), radii: undefined }, 'Corner radius')} onEnd={end} onCommit={setAll} />
+          <NumField key="r" icon={<IconRadius />} min={0} value={r} onLive={(v) => live(s.id, { radius: Math.max(0, v), radii: undefined }, 'Corner radius')} onEnd={end} onCommit={setAll} />
           <Hint label="Individual corners">
             <button onClick={() => setExpanded(true)} className="cursor-pointer text-muted-foreground hover:text-foreground">
               <Expand size={12} />
@@ -1516,7 +1536,7 @@ export function PropertiesPanel() {
           <Section title="Opacity">
             <Row>
               <NumField
-                label="O"
+                icon={<IconOpacity />}
                 scale={100}
                 step={0.004}
                 min={0}
@@ -1601,7 +1621,7 @@ export function PropertiesPanel() {
         <Section title="Appearance">
           <Row>
             <NumField
-              label="O"
+              icon={<IconOpacity />}
               scale={100}
               step={0.004}
               min={0}
@@ -1626,7 +1646,7 @@ export function PropertiesPanel() {
           {s.type !== 'line' && (
             <Row>
               <NumField
-                label="°"
+                icon={<IconRotate />}
                 min={-360}
                 max={360}
                 value={s.rotation ?? 0}

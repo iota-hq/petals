@@ -128,7 +128,7 @@ export function LeftPanel({ projectId }: { projectId: string }) {
 
   return (
     <TooltipProvider>
-      <aside className="flex min-h-0 w-60 shrink-0 flex-col border-r border-border bg-card">
+      <aside className="flex min-h-0 w-60 shrink-0 flex-col border-r border-border bg-[#1c1c1c]">
         {/* file header: panel toggle · back · identity · name */}
         <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-2">
           <Hint label="Hide layers panel">
@@ -174,21 +174,24 @@ export function LeftPanel({ projectId }: { projectId: string }) {
         </div>
 
         {/* Pages */}
-        <div className="flex h-7 shrink-0 items-center justify-between pl-3 pr-1.5 pt-2">
-          <span className="text-[11px] text-muted-foreground">Pages</span>
-          <Hint label="More pages soon">
-            <button className="text-muted-foreground/70" disabled>
-              <Plus size={13} />
-            </button>
-          </Hint>
-        </div>
-        <div className="shrink-0 px-1.5 pb-1.5 pt-0.5">
-          <div className="flex h-6.5 items-center gap-2 rounded-md bg-accent px-2 text-[12px] text-foreground">Page 1</div>
-        </div>
+        <section className="border-b border-border px-3.5 pb-2 pt-3">
+          <div className="mb-2 flex min-h-6 items-center justify-between gap-1">
+            <span className="text-[13px] font-semibold tracking-[0.01em] text-foreground/90">Pages</span>
+            <Hint label="More pages soon">
+              <button className="cursor-pointer text-muted-foreground disabled:cursor-default disabled:opacity-40" disabled>
+                <Plus size={13} />
+              </button>
+            </Hint>
+          </div>
+          <div className="flex h-7 items-center gap-2 rounded-md bg-[#2b2b2b] px-2 text-[12px] font-medium text-foreground/90 ring-1 ring-inset ring-primary/40">Page 1</div>
+        </section>
 
-        <div className="shrink-0 pb-1 pl-3 pt-1.5 text-[11px] text-muted-foreground">Layers</div>
+        <section className="flex min-h-0 flex-1 flex-col pt-3">
+          <div className="mb-2 flex min-h-6 shrink-0 items-center justify-between pl-3.5 pr-3.5">
+            <span className="text-[13px] font-semibold tracking-[0.01em] text-foreground/90">Layers</span>
+          </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto pb-3 scrollbar-thin" style={drag ? { userSelect: 'none' } : undefined}>
+          <div className="min-h-0 flex-1 overflow-y-auto pb-3 scrollbar-thin" style={drag ? { userSelect: 'none' } : undefined}>
           {rows.length === 0 && (
             <div className="flex flex-col items-center gap-2 px-3 py-10 text-center">
               <SquareDashed size={22} className="text-muted-foreground/40" />
@@ -236,7 +239,7 @@ export function LeftPanel({ projectId }: { projectId: string }) {
                       if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
                       if (e.key === 'Escape') setEditing(null)
                     }}
-                    className="min-w-0 flex-1 rounded bg-background/60 text-[12px] outline-none px-0.5"
+                    className="min-w-0 flex-1 rounded bg-[#2b2b2b] text-[12px] outline-none px-0.5"
                   />
                 ) : (
                   <span className={'min-w-0 flex-1 truncate text-[12px] ' + (s.visible ? 'text-foreground' : 'text-muted-foreground/50 italic')}>{s.name}</span>
@@ -273,7 +276,8 @@ export function LeftPanel({ projectId }: { projectId: string }) {
               Drop here to send to page background
             </p>
           )}
-        </div>
+          </div>
+        </section>
       </aside>
     </TooltipProvider>
   )
