@@ -1,13 +1,15 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, ChevronDown, Search, X } from 'lucide-react'
-import type { FontCategory, GoogleFont } from '@/lib/googleFonts'
+import { Check, X } from 'lucide-react'
+import type { GoogleFont } from '@/lib/googleFonts'
 import { familyNameOf, googleFontUrl, loadGoogleFonts } from '@/lib/googleFonts'
+import type { FontCategory } from '@/lib/googleFonts'
 
 /**
- * Figma-style font list: a trigger showing the current face, opening a searchable
- * scroll list where every row previews itself in its own typeface. Local faces ship
- * with the app; the Google library is fetched from the Fontsource CDN on demand.
+ * Figma-style font list: a wide panel that opens over the canvas, a header showing the
+ * current face that doubles as the search box, and rows that preview themselves in
+ * their own typeface. Local faces ship with the app; the Google library is fetched
+ * from the Fontsource CDN on demand.
  */
 
 export interface FontEntry {
@@ -19,16 +21,7 @@ export interface FontEntry {
 }
 
 const PAGE = 60
-
-const FILTERS: Array<{ id: FontCategory | 'all'; label: string }> = [
-  { id: 'all', label: 'All' },
-  { id: 'handwriting', label: 'Hand' },
-  { id: 'display', label: 'Display' },
-  { id: 'serif', label: 'Serif' },
-  { id: 'sans-serif', label: 'Sans' },
-  { id: 'monospace', label: 'Mono' },
-]
-type FilterId = (typeof FILTERS)[number]['id']
+const WIDTH = 360
 
 // Preview faces are injected once per session and left in document.fonts. Adding a
 // loaded FontFace makes the browser restyle any text already using that family name,
@@ -86,7 +79,6 @@ export const FontPicker = memo(function FontPicker({
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const [filter, setFilter] = useState<FilterId>('all')
   const [limit, setLimit] = useState(PAGE)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -107,45 +99,40 @@ export const FontPicker = memo(function FontPicker({
     for (const e of entries) if (!m.has(e.name.toLowerCase())) m.set(e.name.toLowerCase(), e)
     return m
   }, [entries])
-  const current: FontEntry =
-    builtin.find((e) => e.preview === value) ??
-    entriesByName.get(currentName.toLowerCase()) ??
-    builtin[0]
+  const current: FontEntry = builtin.find((e) => e.preview === value) ?? entriesByName.get(currentName.toLowerCase()) ?? builtin[0]
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return entries.filter(
-      (f) =>
-        (filter === 'all' || f.category === filter) &&
-        (!q || f.name.toLowerCase().includes(q)),
-    )
-  }, [entries, query, filter])
+    return q ? entries.filter((f) => f.name.toLowerCase().includes(q)) : entries
+  }, [entries, query])
 
-  // A new search or filter starts the window over. Adjusted during render rather
-  // than in an effect: an effect would paint one frame of the old, longer window
-  // against the new result set before snapping back.
-  const windowKey = `${query}|${filter}`
-  const [limitKey, setLimitKey] = useState(windowKey)
-  if (limitKey !== windowKey) {
-    setLimitKey(windowKey)
+  // a new search starts the window over — adjusted during render rather than in an
+  // effect, so no frame of the stale, longer window is ever painted
+  const [limitKey, setLimitKey] = useState(query)
+  if (limitKey !== query) {
+    setLimitKey(query)
     setLimit(PAGE)
   }
-
   const shown = useMemo(() => matches.slice(0, limit), [matches, limit])
 
   function openMenu() {
     const el = triggerRef.current
     if (!el) return
     const r = el.getBoundingClientRect()
+    // over the canvas, flush against the panel's left border (falls back to the trigger)
+    const aside = el.closest('aside')
+    const panel = aside?.getBoundingClientRect()
+    const right = panel ? panel.left - 8 : r.left - 8
+    const left = Math.max(8, right - WIDTH)
     const below = window.innerHeight - r.bottom - 12
     const above = r.top - 12
-    const flipUp = below < 280 && above > below
+    const flipUp = below < 420 && above > below
     setMenu({
-      left: r.left,
-      width: Math.max(240, r.width),
+      left,
+      width: WIDTH,
       top: flipUp ? undefined : r.bottom + 6,
       bottom: flipUp ? window.innerHeight - r.top + 6 : undefined,
-      maxH: Math.min(380, flipUp ? above : below),
+      maxH: Math.min(560, flipUp ? above : below),
     })
     setQuery('')
     setLimit(PAGE)
@@ -216,7 +203,7 @@ export const FontPicker = memo(function FontPicker({
         <span className="truncate text-[13px] leading-none text-foreground" style={{ fontFamily: current.preview }}>
           {current.name}
         </span>
-        <ChevronDown size={12} className="shrink-0 text-muted-foreground" />
+        <span className="text-[10px] text-muted-foreground/70">▼</span>
       </button>
 
       {open &&
@@ -226,45 +213,28 @@ export const FontPicker = memo(function FontPicker({
             <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
             <div
               role="listbox"
-              className="fixed z-[70] overflow-hidden rounded-xl border border-border bg-popover/95 shadow-2xl backdrop-blur"
+              className="fixed z-[70] flex flex-col overflow-hidden rounded-xl border border-border bg-[#2c2c2c]/95 shadow-2xl backdrop-blur"
               style={{ left: menu.left, width: menu.width, top: menu.top, bottom: menu.bottom }}
             >
-              <div className="flex items-center gap-2 border-b border-border px-2.5 py-1.5">
-                <Search size={13} className="shrink-0 text-muted-foreground" />
+              {/* header: shows the current face; typing searches it */}
+              <div className="flex h-11 shrink-0 items-center gap-2 border-b border-white/10 px-4">
                 <input
                   autoFocus
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder={loading ? 'Loading fonts…' : `Search ${entries.length} fonts`}
-                  className="w-full bg-transparent text-[12px] text-foreground outline-none placeholder:text-muted-foreground/70"
+                  placeholder={loading ? 'Loading fonts…' : current.name}
+                  className="w-full bg-transparent text-[16px] font-medium text-foreground outline-none placeholder:text-foreground"
                 />
-                {query && (
-                  <button
-                    onClick={() => setQuery('')}
-                    aria-label="Clear search"
-                    className="shrink-0 cursor-pointer text-muted-foreground transition-colors hover:text-foreground"
-                  >
-                    <X size={12} />
-                  </button>
-                )}
+                <button
+                  aria-label={query ? 'Clear search' : 'Close'}
+                  onClick={() => (query ? setQuery('') : setOpen(false))}
+                  className="shrink-0 cursor-pointer text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  <X size={15} />
+                </button>
               </div>
 
-              <div className="no-scrollbar flex gap-1 overflow-x-auto border-b border-border px-2.5 py-1.5">
-                {FILTERS.map((f) => (
-                  <button
-                    key={f.id}
-                    onClick={() => setFilter(f.id)}
-                    className={
-                      'shrink-0 cursor-pointer rounded-full px-2 py-0.5 text-[11px] transition-colors ' +
-                      (filter === f.id ? 'bg-primary text-primary-foreground' : 'bg-[#2b2b2b] text-muted-foreground hover:text-foreground')
-                    }
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-
-              <div ref={scrollRef} onScroll={onScroll} className="scrollbar-auto overflow-y-auto py-1" style={{ maxHeight: menu.maxH - 84 }}>
+              <div ref={scrollRef} onScroll={onScroll} className="scrollbar-auto min-h-0 flex-1 overflow-y-auto py-1.5" style={{ maxHeight: menu.maxH - 52 }}>
                 {matches.length === 0 && (
                   <p className="px-3 py-2 text-[12px] text-muted-foreground">{loading ? 'Loading fonts…' : `No fonts match “${query}”.`}</p>
                 )}
@@ -278,21 +248,30 @@ export const FontPicker = memo(function FontPicker({
                       role="option"
                       aria-selected={selected}
                       onClick={() => {
-                        const stack = f.category === 'builtin' ? f.preview : `'${f.name}', ${f.category === 'monospace' ? 'monospace' : f.category === 'handwriting' ? 'cursive' : f.category === 'serif' || f.category === 'display' ? 'serif' : 'sans-serif'}`
-                        onChange(stack)
+                        const fallback =
+                          f.category === 'monospace'
+                            ? 'monospace'
+                            : f.category === 'handwriting'
+                              ? 'cursive'
+                              : f.category === 'sans-serif'
+                                ? 'sans-serif'
+                                : 'serif'
+                        onChange(f.category === 'builtin' ? f.preview : `'${f.name}', ${fallback}`)
                         setOpen(false)
                       }}
                       className={
-                        'flex w-full cursor-pointer items-center gap-2 px-2.5 py-1 text-left transition-colors ' +
-                        (selected ? 'text-foreground' : 'text-muted-foreground hover:text-foreground')
+                        'flex w-full cursor-pointer items-center gap-2 px-4 text-left transition-colors ' +
+                        (selected ? 'text-foreground' : 'text-foreground/85 hover:text-foreground')
                       }
                     >
                       <span
-                        className={'flex w-4 shrink-0 justify-center ' + (selected ? 'text-primary' : 'text-muted-foreground')}
+                        className={
+                          'flex w-4 shrink-0 justify-center ' + (selected ? 'text-primary' : 'text-transparent')
+                        }
                       >
-                        {selected && <Check size={12} />}
+                        <Check size={12} />
                       </span>
-                      <span className="min-w-0 flex-1 truncate text-[15px] leading-tight" style={{ fontFamily: f.preview }}>
+                      <span className="min-w-0 flex-1 truncate text-[19px] leading-tight" style={{ fontFamily: f.preview }}>
                         {f.name}
                       </span>
                     </button>

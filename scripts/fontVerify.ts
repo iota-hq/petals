@@ -81,6 +81,7 @@ await search.fill('Inter')
 await page.waitForTimeout(250)
 const rows = page.locator('[role="listbox"] [role="option"]', { hasText: 'Inter' })
 ok((await rows.count()) > 0, `search finds Inter (${await rows.count()} rows)`)
+await page.screenshot({ path: 'test-artifacts/font-picker.png' }) // popover open, over the canvas
 await rows.first().click()
 await page.waitForTimeout(700)
 const applied = await page.evaluate(() => {
@@ -90,7 +91,6 @@ const applied = await page.evaluate(() => {
   return t?.fontFamily ?? ''
 })
 ok(applied.includes('Inter'), `fontFamily applied (${applied})`)
-await page.screenshot({ path: 'test-artifacts/font-picker.png' })
 
 console.log(`console/page errors: ${errors.length}`)
 ok(errors.length === 0, 'no console/page errors')

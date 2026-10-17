@@ -379,7 +379,7 @@ function usePopoverDismiss(ref: React.RefObject<HTMLElement | null>, onClose: ()
   }, [active])
 }
 
-/** Fixed-position popover state anchored under the triggering element (never clipped by the panel). */
+/** Fixed-position popover state anchored beside the trigger — it opens over the canvas, off the panel. */
 function usePopFixed() {
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState({ top: 0, left: 0 })
@@ -392,9 +392,13 @@ function usePopFixed() {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
     const width = 192
     const height = 246
+    // open over the canvas, flush against the panel's left border (falls back to the trigger when no aside ancestor)
+    const aside = (e.currentTarget as HTMLElement).closest('aside')
+    const panel = aside?.getBoundingClientRect()
+    const right = panel ? panel.left - 8 : r.left - 8
     setPos({
       top: r.bottom + height > window.innerHeight ? Math.max(8, r.top - height) : r.bottom + 6,
-      left: Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8)),
+      left: Math.max(8, right - width),
     })
     setOpen(true)
   }
