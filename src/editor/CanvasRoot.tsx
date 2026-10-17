@@ -258,7 +258,7 @@ export function CanvasRoot() {
         {empty && !gestureKind && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
             <div className="text-center text-sm text-muted-foreground/60">
-              <p className="text-base text-muted-foreground/80">Petal canvas</p>
+              <p className="text-base text-muted-foreground/80">Petals canvas</p>
               <p className="mt-1">
                 Press <kbd className="rounded border border-border bg-card px-1">R</kbd> and drag to draw a rectangle ·{' '}
                 <kbd className="rounded border border-border bg-card px-1">F</kbd> for a frame ·{' '}

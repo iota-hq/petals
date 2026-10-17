@@ -387,7 +387,7 @@ export async function exportSelectionRaster(format: 'png' | 'jpeg' | 'webp' | 'a
 
   const blob = await new Promise<Blob | null>((res) => c.toBlob(res, RASTER[format], format === 'jpeg' ? 0.92 : undefined))
   if (!blob) return
-  download(blob, `${sanitizeName(nodes[roots[0]]?.name, 'petal-export')}.${format === 'jpeg' ? 'jpg' : format}`)
+  download(blob, `${sanitizeName(nodes[roots[0]]?.name, 'petals-export')}.${format === 'jpeg' ? 'jpg' : format}`)
 }
 
 /* keep the old external name working */
@@ -636,7 +636,7 @@ export async function exportSelectionSVG() {
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(b.w)}" height="${Math.round(b.h)}" viewBox="${b.x} ${b.y} ${b.w} ${b.h}">${defs.join('')}${clips.join('')}${body.join('')}</svg>`
 
-  download(new Blob([svg], { type: 'image/svg+xml' }), `${sanitizeName(nodes[roots[0]]?.name, 'petal-export')}.svg`)
+  download(new Blob([svg], { type: 'image/svg+xml' }), `${sanitizeName(nodes[roots[0]]?.name, 'petals-export')}.svg`)
 }
 
 /* ------------------------------ EPS / AI ------------------------------ */
@@ -934,12 +934,12 @@ export async function exportSelectionEPS(asAI = false) {
   for (const src of srcs) imageCache.set(src, await loadImage(src))
   for (const root of roots) await epsShape(nodes, nodes[root], 0, 0, out)
 
-  const name = sanitizeName(nodes[roots[0]]?.name, 'petal-export')
+  const name = sanitizeName(nodes[roots[0]]?.name, 'petals-export')
   const eps = [
     '%!PS-Adobe-3.0 EPSF-3.0',
     `%%BoundingBox: 0 0 ${W} ${Hh}`,
     `%%HiResBoundingBox: 0 0 ${fmt(b.w)} ${fmt(b.h)}`,
-    '%%Creator: Petal',
+    '%%Creator: Petals',
     asAI ? '%%Creator: Adobe Illustrator(R) 24.3; AI application' : `%%Title: ${name}`,
     '%%Pages: 1',
     '%%EndComments',

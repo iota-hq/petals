@@ -17,14 +17,11 @@ function Arrow() {
 
 export default function Landing() {
   return (
-    <div className="relative min-h-dvh overflow-x-clip bg-[#111111] text-foreground">
-      {/* ambient glows */}
-      <div className="pointer-events-none absolute -top-48 left-[20%] h-[560px] w-[560px] rounded-full bg-primary/12 blur-[140px]" />
-      <div className="pointer-events-none absolute top-[30%] right-[8%] h-[520px] w-[520px] rounded-full bg-fuchsia-600/10 blur-[150px]" />
-      {/* film-grain-ish vignette like the mock */}
+    <div className="relative min-h-dvh overflow-x-clip bg-black text-foreground">
+      {/* Rose Twilight — pink glow rising from the top */}
       <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-[720px]"
-        style={{ background: 'radial-gradient(120% 90% at 50% 0%, rgba(255,255,255,0.05) 0%, transparent 60%)' }}
+        className="pointer-events-none absolute inset-0 z-0"
+        style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(244, 114, 182, 0.25), transparent 70%), #000000' }}
       />
 
       {/* nav */}
@@ -50,7 +47,7 @@ export default function Landing() {
         {/* rotating single bloom, dead-center like the mock's wordmark */}
         <img
           src="/petal-flower.svg"
-          alt="Petal"
+          alt="Petals"
           className="pointer-events-none absolute left-1/2 top-1/2 size-7 -translate-x-1/2 -translate-y-1/2"
         />
         <button onClick={() => go('/projects')} className={pillDark + ' ml-auto'}>

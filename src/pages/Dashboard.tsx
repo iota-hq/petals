@@ -13,6 +13,9 @@ function FlowerLogo({ size = 20, className }: { size?: number; className?: strin
 /** Compact white pill matching the landing hero button. */
 const pillWhite =
   'inline-flex h-9 cursor-pointer items-center gap-2 rounded-full bg-white px-4 text-[13px] font-medium text-neutral-950 transition-colors hover:bg-white/90'
+/** Compact dark pill matching the landing nav button. */
+const pillDark =
+  'inline-flex h-9 cursor-pointer items-center gap-2 rounded-full bg-[#262626] px-4 text-[13px] font-medium text-foreground transition-colors hover:bg-[#333333]'
 
 function fmtDate(ts: number) {
   return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
@@ -32,7 +35,7 @@ export default function Dashboard() {
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-white/10 bg-background px-5 md:px-7">
         <button className="flex cursor-pointer items-center gap-2" onClick={() => go('/')}>
           <FlowerLogo size={18} />
-          <span className="text-[13px] font-semibold tracking-tight">Petal</span>
+          <span className="text-[13px] font-semibold tracking-tight">Petals</span>
         </button>
         <div className="flex items-center gap-3">
           <button
