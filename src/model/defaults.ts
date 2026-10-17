@@ -58,7 +58,7 @@ export function normalizeShape(raw: unknown): Shape | null {
   const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d)
   const t = r.type as ShapeType
   const shape = createShape({ type: t, id: r.id, name: r.name || baseName(t) })
-  shape.parentId = typeof r.parentId === 'string' ? r.parentId : null
+  shape.parentId = typeof r.parentId === 'string' && r.parentId !== r.id ? r.parentId : null
   shape.order = num(r.order, 0)
   shape.x = num(r.x, 0)
   shape.y = num(r.y, 0)

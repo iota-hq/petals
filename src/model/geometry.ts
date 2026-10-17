@@ -155,10 +155,10 @@ export function topOrderFor(nodes: Record<string, Shape>, parentId: string | nul
   return max === -Infinity ? 0 : max
 }
 
-/** Deepest visible, unlocked frame whose page AABB contains point p. */
-export function adoptFrameAt(nodes: Record<string, Shape>, p: Vec): Shape | null {
+/** Deepest visible, unlocked frame whose page AABB contains point p (excluding `exclude` subtrees). */
+export function adoptFrameAt(nodes: Record<string, Shape>, p: Vec, exclude?: Set<string>): Shape | null {
   const frames = Object.values(nodes).filter(
-    (s) => s.type === 'frame' && s.visible && !s.locked,
+    (s) => s.type === 'frame' && s.visible && !s.locked && !exclude?.has(s.id),
   )
   let best: Shape | null = null
   let bestDepth = -1

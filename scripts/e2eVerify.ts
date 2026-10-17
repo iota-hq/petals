@@ -147,6 +147,16 @@ const newBody = await page.evaluate(() => {
 ok(newBody === 'rgb(217, 217, 217)', `freshly drawn rect after cycle has fill (got ${newBody})`)
 console.log('   whole-page selection state screenshot')
 
+console.log('— re-click the FRAME itself (the reported trigger for frames) —')
+await page.mouse.click(300, 800) // deselect
+await page.waitForTimeout(150)
+await page.mouse.click(935, 420) // click on the frame
+await page.waitForTimeout(200)
+const frameRows = await nodeCount()
+const frameGone = (await onCanvas(frameId)) === 0
+console.log(`   rows after re-clicking frame: ${frameRows}, frame on canvas: ${frameGone ? 'NO (VANISHED)' : 'yes'}`)
+ok(frameRows === 5 && !frameGone, 'frame survives being re-clicked (self-parent bug)')
+
 console.log('— undo / redo —')
 const before = await nodeCount()
 await page.keyboard.press('Control+z')

@@ -11,6 +11,7 @@ import {
   pageAABB,
   rectIntersect,
   selectionRoots,
+  subtreeIds,
   topOrderFor,
   type Rect,
   type Vec,
@@ -484,7 +485,7 @@ export function moveLive(page: Vec) {
       const off = offsetForParent(doc.nodes, s.parentId)
       const box = s.type === 'line' ? lineBox(s) : { x: s.x, y: s.y, w: s.w, h: s.h }
       const center = { x: off.x + box.x + box.w / 2, y: off.y + box.y + box.h / 2 }
-      const target = adoptFrameAt(doc.nodes, center)
+      const target = adoptFrameAt(doc.nodes, center, subtreeIds(doc.nodes, [first]))
       useUi.getState().setDropTarget(target && target.id !== s.parentId ? target.id : null)
     }
   }
@@ -510,7 +511,7 @@ export function finishMove() {
     const off = offsetForParent(nodes, s.parentId)
     const box = s.type === 'line' ? lineBox(s) : { x: s.x, y: s.y, w: s.w, h: s.h }
     const center = { x: off.x + box.x + box.w / 2, y: off.y + box.y + box.h / 2 }
-    const dest = adoptFrameAt(nodes, center)
+    const dest = adoptFrameAt(nodes, center, subtreeIds(nodes, [id]))
     const destParent = dest?.id ?? null
     if (destParent !== s.parentId) {
       const newOff = offsetForParent(nodes, destParent)

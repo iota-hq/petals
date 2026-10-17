@@ -101,13 +101,16 @@ export const useDoc = create<DocStore>((set, get) => {
   const sanitizeParents = () => {
     const { nodes } = get()
     const dangling = Object.values(nodes)
-      .filter((s) => s.parentId && !nodes[s.parentId])
+      .filter((s) => {
+        const pid = s.parentId
+        return !!pid && (pid === s.id || !nodes[pid])
+      })
       .map((s) => s.id)
     if (!dangling.length) return
     applyMut((n) => {
       for (const id of dangling) {
         const s = n[id]
-        if (s && s.parentId && !n[s.parentId]) s.parentId = null
+        if (s && s.parentId && (s.parentId === id || !n[s.parentId])) s.parentId = null
       }
     })
   }
