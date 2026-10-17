@@ -246,6 +246,8 @@ function TextView({ s }: { s: Shape }) {
   const finish = () => {
     const el = ref.current
     if (!el || !editingRef.current) return
+    // the outside-click commit in CanvasRoot may have already ended the edit
+    if (useUi.getState().editingText !== s.id) return
     const text = el.textContent ?? ''
     const doc = useDoc.getState()
     if (!text.trim()) {

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { offsetForParent, type Vec } from '@/model/geometry'
+import { commitActiveTextEdit } from './commands'
 import { useDoc } from '@/store/docStore'
 import { zoomAt, useUi, setZoomAroundCenter, type Handle } from '@/store/uiStore'
 import { Hint, TooltipProvider } from '@/components/ui/tooltip'
@@ -185,10 +186,14 @@ export function CanvasRoot() {
       }
     }
 
-    // don't steal pointer events while editing a text node
+    // don't steal pointer events while editing a text node; an outside click commits
+    // the edit, keeps the selection and is swallowed (next click deselects as usual)
     if (ui.editingText) {
       const inside = (e.target as HTMLElement).closest(`[data-node-id="${ui.editingText}"]`)
       if (inside) return
+      e.preventDefault()
+      commitActiveTextEdit()
+      return
     }
 
     if (ui.tool === 'text') {

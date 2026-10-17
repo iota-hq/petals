@@ -304,6 +304,21 @@ export function commitTextEdit(id: string, text: string, autoH: number) {
   setProps([id], { text, h: Math.max(1, autoH) }, 'Edit text')
 }
 
+/** Commit the text node currently being edited, reading its live DOM content. */
+export function commitActiveTextEdit() {
+  const id = useUi.getState().editingText
+  if (!id) return
+  const el = useDoc.getState().nodes[id] ? (document.querySelector(`[data-node-id="${id}"]`) as HTMLElement | null) : null
+  useUi.setState({ editingText: null })
+  if (!el) return
+  const text = el.textContent ?? ''
+  if (!text.trim()) {
+    useDoc.getState().deleteShapes([id], 'Edit text')
+    return
+  }
+  commitTextEdit(id, text, el.scrollHeight)
+}
+
 export function typeLive(id: string, text: string) {
   useDoc.getState().patchLive((n) => {
     const s = n[id]
