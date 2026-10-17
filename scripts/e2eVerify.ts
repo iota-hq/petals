@@ -119,6 +119,34 @@ console.log('   layers panel rows: ' + (await page.locator('[data-layer-row]').c
 await page.forceWaitingForSave?.()
 await page.screenshot({ path: 'test-artifacts/03-inside-frame.png' })
 
+console.log('— deselect, then click back: the reported trigger —')
+// click on empty canvas far from any shape to deselect
+await page.mouse.click(300, 800)
+await page.waitForTimeout(200)
+const rowsAfterDeselect = await nodeCount()
+ok(rowsAfterDeselect === 4, `layers rows intact after deselect (rows=${rowsAfterDeselect})`)
+ok((await onCanvas(id1!)) === 1, 'rect 1 still rendered after deselect')
+// click back on rect 1
+await page.mouse.click(520, 310)
+await page.waitForTimeout(200)
+ok((await nodeCount()) === 4, `rect 1 still in layers after re-click (rows=${await nodeCount()})`)
+ok((await onCanvas(id1!)) === 1, 'rect 1 still rendered after re-click')
+const bgAfter = await bgOf(id1!)
+ok(bgAfter === 'rgb(217, 217, 217)', `rect 1 fill intact after re-click (got ${bgAfter})`)
+
+console.log('— draw new rect after the deselect cycle (creates broken per report) —')
+await page.keyboard.press('r')
+await draw(400, 500, 500, 560)
+const rows5 = await nodeCount()
+ok(rows5 === 5, `5 shapes after new rect (rows=${rows5})`)
+const newBody = await page.evaluate(() => {
+  const els = Array.from(document.querySelectorAll('[data-node-id]:not([data-handle])'))
+  const last = els[els.length - 1] as HTMLElement
+  return getComputedStyle(last).backgroundColor
+})
+ok(newBody === 'rgb(217, 217, 217)', `freshly drawn rect after cycle has fill (got ${newBody})`)
+console.log('   whole-page selection state screenshot')
+
 console.log('— undo / redo —')
 const before = await nodeCount()
 await page.keyboard.press('Control+z')

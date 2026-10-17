@@ -74,6 +74,16 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* pointer affordance everywhere clickable */
+  button,
+  [role='button'],
+  a,
+  label,
+  select,
+  summary,
+  [data-layer-row] {
+    cursor: pointer;
+  }
   html,
   body,
   #root {
