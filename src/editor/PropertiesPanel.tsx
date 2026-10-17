@@ -35,6 +35,7 @@ import { useUi, DEFAULT_CANVAS_BG, setZoomAroundCenter } from '@/store/uiStore'
 import { fileToImageSrc, addImageFile, alignSelection, canvasEl, nudge, setProps, type AlignEdge } from './commands'
 import { downloadSelectionCode, exportSelectionEPS, exportSelectionPNG, exportSelectionRaster, exportSelectionSVG } from './exporters'
 import { IconBlur, IconConic, IconGradientFill, IconImageFill, IconLinear, IconMargin, IconOpacity, IconRadial, IconRadius, IconRotate, IconSolidFill, IconSpread, IconStroke } from './proIcons'
+import { FontPicker, useGoogleFonts, type FontEntry } from './FontPicker'
 import { UndoRedoButtons } from './UndoRedoButtons'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -44,6 +45,10 @@ import { Hint, TooltipProvider } from '@/components/ui/tooltip'
 
 const panelCls =
   'flex w-[264px] shrink-0 flex-col overflow-hidden border-l border-border bg-[#1c1c1c]'
+
+/** Below lg the right panel floats over the canvas instead of being clipped off-screen. */
+const panelMobileRight =
+  ' max-lg:fixed max-lg:inset-y-0 max-lg:right-0 max-lg:z-40 max-lg:w-[min(300px,86vw)] max-lg:shadow-2xl'
 
 /** Ultra-slim scrollbar that fades out shortly after scrolling stops; body may scroll, the top bar stays fixed. */
 function PanelScroll({ children }: { children: ReactNode }) {
@@ -1198,7 +1203,7 @@ function MarginSection({ s }: { s: Shape }) {
   )
 }
 
-/** Border/stroke: addable weight + align row over a boxed color row. */
+/** Outline/stroke: addable weight + align row over a boxed color row. */
 function BorderSection({
   s,
   live,
@@ -1214,14 +1219,14 @@ function BorderSection({
   const isLine = s.type === 'line'
   return (
     <Section
-      title={isLine ? 'Stroke' : 'Border'}
+      title={isLine ? 'Stroke' : 'Outline'}
       open={has}
       onAdd={
         !has && !isLine
           ? () => commit({ stroke: '#d9d9d9', strokeWidth: s.strokeWidth ?? 1 }, 'Add border')
           : undefined
       }
-      onRemove={has && !isLine ? () => commit({ stroke: undefined }, 'Remove border') : undefined}
+      onRemove={has && !isLine ? () => commit({ stroke: undefined }, 'Remove outline') : undefined}
     >
       <Row>
         <NumField
@@ -1257,6 +1262,16 @@ const FONT_FAMILIES: readonly (readonly [string, string])[] = [
   ['"Courier New", monospace', 'Courier New'],
 ]
 
+/** Locally shipped faces for the FontPicker trigger + list (always preview instantly). */
+const BUILTIN_FONT_ENTRIES: FontEntry[] = [
+  { id: 'builtin:geist', name: 'Geist', category: 'sans-serif', preview: FONT_FAMILIES[0][0] },
+  { id: 'builtin:geist-mono', name: 'Geist Mono', category: 'monospace', preview: FONT_FAMILIES[1][0] },
+  { id: 'builtin:georgia', name: 'Georgia', category: 'serif', preview: FONT_FAMILIES[2][0] },
+  { id: 'builtin:times', name: 'Times New Roman', category: 'serif', preview: FONT_FAMILIES[3][0] },
+  { id: 'builtin:arial', name: 'Arial', category: 'sans-serif', preview: FONT_FAMILIES[4][0] },
+  { id: 'builtin:courier', name: 'Courier New', category: 'monospace', preview: FONT_FAMILIES[5][0] },
+]
+
 const FONT_WEIGHTS: readonly (readonly [string, string])[] = [
   ['400', 'Regular'],
   ['500', 'Medium'],
@@ -1282,12 +1297,16 @@ function TypographySection({
     { icon: AlignRight, a: 'right', tip: 'Align right' },
     { icon: AlignJustify, a: 'justify', tip: 'Justify' },
   ]
+  // google library loads once per session, lazily when the picker opens
+  const [googleFonts, googleFontsLoading] = useGoogleFonts()
   return (
     <Section title="Typography">
-      <MiniSelect
+      <FontPicker
+        fonts={googleFonts}
+        builtin={BUILTIN_FONT_ENTRIES}
         value={(s.fontFamily ?? FONT_FAMILIES[0][0]) as string}
-        options={FONT_FAMILIES}
         onChange={(v) => commit({ fontFamily: v }, 'Font family')}
+        loading={googleFontsLoading}
       />
       <Row>
         <MiniSelect
@@ -1430,7 +1449,8 @@ function AlignRow() {
 /* ------------------------------ panel ------------------------------ */
 
 /** Zoom percentage cluster for the right-panel header. */
-function ZoomCluster() {
+/** Undo/redo + zoom readout cluster; reused by the right panel header and the mobile canvas pill. */
+export function ZoomCluster() {
   const zoom = useUi((s) => s.camera.zoom)
   const step = (factor: number) => {
     const el = canvasEl.current
@@ -1489,7 +1509,7 @@ export function PropertiesPanel() {
 
   if (!shapes.length) {
     return (
-      <aside className={panelCls + ' hidden lg:flex'}>
+      <aside className={panelCls + panelMobileRight}>
         <PanelTop />
         <PanelScroll>
           <div className="border-b border-border px-3 py-2.5">
@@ -1539,7 +1559,7 @@ export function PropertiesPanel() {
     const b = boundsOfRects(boxes)
     return (
       <TooltipProvider>
-        <aside className={panelCls + ' hidden lg:flex'}>
+        <aside className={panelCls + panelMobileRight}>
           <PanelTop />
           <PanelScroll>
           {header('rect')}
@@ -1599,7 +1619,7 @@ export function PropertiesPanel() {
 
   return (
     <TooltipProvider>
-      <aside className={panelCls + ' hidden lg:flex'}>
+      <aside className={panelCls + panelMobileRight}>
         <PanelTop />
         <PanelScroll>
         {header(s.type, s)}
@@ -1667,7 +1687,7 @@ export function PropertiesPanel() {
               onCommit={(v) => commitProp({ opacity: v }, 'Opacity')}
             />
           </Row>
-          {(s.type === 'rect' || s.type === 'frame' || s.type === 'image') && (
+          {(s.type === 'rect' || s.type === 'frame' || s.type === 'image' || s.type === 'text') && (
             <Row>
               <RadiusField s={s} live={live} end={end} commit={commitProp} />
               {s.type === 'frame' && (
@@ -1693,13 +1713,13 @@ export function PropertiesPanel() {
           )}
         </Section>
 
-        {(s.type === 'rect' || s.type === 'ellipse' || s.type === 'frame') && (
+        {(s.type === 'rect' || s.type === 'ellipse' || s.type === 'frame' || s.type === 'text') && (
           <Section title="Fill">
             <FillField s={s} />
           </Section>
         )}
 
-        {(s.type === 'rect' || s.type === 'ellipse' || s.type === 'frame' || s.type === 'image') && (
+        {(s.type === 'rect' || s.type === 'ellipse' || s.type === 'frame' || s.type === 'image' || s.type === 'text') && (
           <>
             <ShadowSection s={s} field="shadow" title="Shadow" />
             <ShadowSection s={s} field="innerShadow" title="Inner shadow" />
@@ -1710,9 +1730,7 @@ export function PropertiesPanel() {
 
         {s.type === 'frame' && <MarginSection s={s} />}
 
-        {(s.type === 'line' || s.type === 'rect' || s.type === 'ellipse' || s.type === 'frame') && (
-          <BorderSection s={s} live={live} end={end} commit={commitProp} />
-        )}
+        <BorderSection s={s} live={live} end={end} commit={commitProp} />
 
         {s.type === 'text' && (
           <>

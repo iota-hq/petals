@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from 'react'
+import { Menu, X } from 'lucide-react'
 import { go } from '@/App'
 
 /** Compact pill: label + icon together. */
@@ -15,6 +17,47 @@ function Arrow() {
   )
 }
 
+const LINKS = [
+  ['About', '#'],
+  ['Careers', '#'],
+  ['Gallery', '#'],
+] as const
+
+/** Small-screen secondary button (same pill style as "Open app") opening the page links. */
+function MobileMenu() {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const close = (e: PointerEvent) => {
+      if (!(e.target as HTMLElement).closest('[data-mobile-menu]')) setOpen(false)
+    }
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    document.addEventListener('pointerdown', close, true)
+    document.addEventListener('keydown', esc)
+    return () => {
+      document.removeEventListener('pointerdown', close, true)
+      document.removeEventListener('keydown', esc)
+    }
+  }, [open])
+  return (
+    <div ref={rootRef} data-mobile-menu="" className="absolute left-5 top-2.5 z-10 md:hidden">
+      <button onClick={() => setOpen((v) => !v)} className={pillDark} aria-expanded={open}>
+        {open ? <X size={14} /> : <Menu size={14} />}
+      </button>
+      {open && (
+        <div className="absolute left-0 top-11 flex w-max flex-col items-stretch gap-1.5">
+          {LINKS.map(([label, href]) => (
+            <a key={label} href={href} onClick={(e) => e.preventDefault()} className={pillLight + ' justify-center'}>
+              {label}
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Landing() {
   return (
     <div className="relative min-h-dvh overflow-x-clip bg-black text-foreground">
@@ -26,7 +69,7 @@ export default function Landing() {
 
       {/* nav */}
       <header className="relative z-10 flex h-14 items-center border-b border-white/10 px-5 md:px-7">
-        <nav className="flex items-center gap-6">
+        <nav className="hidden items-center gap-6 md:flex">
           {(
             [
               ['About', '#'],
@@ -44,7 +87,9 @@ export default function Landing() {
             </a>
           ))}
         </nav>
-        {/* rotating single bloom, dead-center like the mock's wordmark */}
+        {/* mobile: secondary button on the left (same pill style), opens the page links */}
+      <MobileMenu />
+      {/* rotating single bloom, dead-center like the mock's wordmark */}
         <img
           src="/petal-flower.svg"
           alt="Petals"

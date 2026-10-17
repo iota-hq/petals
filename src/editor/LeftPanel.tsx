@@ -136,7 +136,7 @@ export function LeftPanel({ projectId }: { projectId: string }) {
 
   return (
     <TooltipProvider>
-      <aside className="flex min-h-0 w-60 shrink-0 flex-col border-r border-border bg-[#1c1c1c]">
+      <aside className="flex min-h-0 w-60 shrink-0 flex-col border-r border-border bg-[#1c1c1c] max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:z-40 max-lg:shadow-2xl">
         {/* file header: back · project name · panel toggle */}
         <div className="flex h-10 shrink-0 items-center gap-0.5 border-b border-border px-2">
           <Hint label="Back to projects">

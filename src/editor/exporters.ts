@@ -320,7 +320,23 @@ async function paintShape(
     const lh = fontSize * (s.lineHeight ?? 1.4)
     ctx.font = `${s.fontWeight ?? 500} ${fontSize}px ${s.fontFamily ?? UI_FONT}`
     if (s.letterSpacing) ctx.letterSpacing = `${s.letterSpacing}px`
-    if (s.shadow) ctx.filter = [filtersToCss(s.filters) ?? '', `drop-shadow(${s.shadow.x}px ${s.shadow.y}px ${s.shadow.blur}px ${s.shadow.color})`].join(' ').trim()
+    ctx.filter = filtersToCss(s.filters) ?? 'none'
+    // box fill (rounded) + shadows behind the glyphs, same pipeline as rect/frame
+    paintOuterShadow(ctx, s, b)
+    const boxPath = shapePath(ctx, s, b)
+    const paint = canvasFill(ctx, s.fill, b)
+    if (paint) {
+      ctx.fillStyle = paint
+      ctx.fill(boxPath)
+    }
+    const ip = imagePaintOf(s)
+    await paintImageFill(ctx, boxPath, ip?.src, ip?.fit, b, cache)
+    if (s.stroke) {
+      ctx.lineWidth = s.strokeWidth ?? 1
+      ctx.strokeStyle = s.stroke
+      ctx.stroke(boxPath)
+    }
+    innerShadowStroke(ctx, boxPath, s)
     ctx.fillStyle = s.color ?? '#ececf1'
     ctx.textBaseline = 'top'
     const wrapped: string[] = []
@@ -341,6 +357,11 @@ async function paintShape(
     wrapped.forEach((line, i) => {
       const tw = ctx.measureText(line).width
       const x = b.x + (s.align === 'center' ? (s.w - tw) / 2 : s.align === 'right' ? s.w - tw : 0)
+      if (s.stroke) {
+        ctx.lineWidth = s.strokeWidth ?? 1
+        ctx.strokeStyle = s.stroke
+        ctx.strokeText(line, x, b.y + i * lh)
+      }
       ctx.fillText(line, x, b.y + i * lh)
     })
     ctx.restore()
@@ -611,8 +632,9 @@ async function shapeToSvg(
     return
   }
   if (s.type === 'image' && s.src) {
+    const istroke = s.stroke ? ` stroke="${esc(s.stroke)}" stroke-width="${s.strokeWidth ?? 1}"` : ''
     out.push(
-      `<image x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" preserveAspectRatio="${s.fit === 'contain' ? 'xMidYMid meet' : 'xMidYMid slice'}" href="${esc(s.src).replace(/\n/g, '')}"${op}${rot}${styleAttr}/>`,
+      `<image x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" preserveAspectRatio="${s.fit === 'contain' ? 'xMidYMid meet' : 'xMidYMid slice'}" href="${esc(s.src).replace(/\n/g, '')}"${op}${rot}${styleAttr}${istroke}/>`,
     )
     return
   }
@@ -622,12 +644,18 @@ async function shapeToSvg(
     const anchor = s.align === 'center' ? 'middle' : s.align === 'right' ? 'end' : 'start'
     const tx = s.align === 'center' ? b.x + s.w / 2 : s.align === 'right' ? b.x + s.w : b.x
     const family = (s.fontFamily ?? UI_FONT).replace(/"/g, "'")
+    // optional box fill behind the glyphs (solid fills only; gradients/ image fills not boxed here)
+    if (s.fill && typeof s.fill === 'string') {
+      const rr = s.radii || (s.radius ? { tl: s.radius, tr: s.radius, br: s.radius, bl: s.radius } : { tl: 0, tr: 0, br: 0, bl: 0 })
+      out.push(`<rect x="${b.x}" y="${b.y}" width="${s.w}" height="${b.h}" rx="${Math.min(rr.tl, rr.tr, rr.br, rr.bl)}" fill="${esc(s.fill)}"${op}/>`)
+    }
+    const tstroke = s.stroke ? ` stroke="${esc(s.stroke)}" stroke-width="${s.strokeWidth ?? 1}" paint-order="stroke fill"` : ''
     const tspans = (s.text ?? '')
       .split('\n')
       .map((line, i) => `<tspan x="${tx}" y="${b.y + i * lh + fontSize * 0.82}">${esc(line)}</tspan>`)
       .join('')
     out.push(
-      `<text font-family="${esc(family)}" font-size="${fontSize}" font-weight="${s.fontWeight ?? 500}"${s.letterSpacing ? ` letter-spacing="${s.letterSpacing}"` : ''} text-anchor="${anchor}" fill="${esc(s.color ?? '#ececf1')}"${op}${rot}${styleAttr}>${tspans}</text>`,
+      `<text font-family="${esc(family)}" font-size="${fontSize}" font-weight="${s.fontWeight ?? 500}"${s.letterSpacing ? ` letter-spacing="${s.letterSpacing}"` : ''} text-anchor="${anchor}" fill="${esc(s.color ?? '#ececf1')}"${tstroke}${op}${rot}${styleAttr}>${tspans}</text>`,
     )
     return
   }

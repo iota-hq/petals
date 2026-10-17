@@ -42,6 +42,11 @@ state lives in `localStorage`, right in your browser.
 - Fill: solid, **linear / radial / conic gradients** (thin gradient bar, stops as color rows,
   icon-only gradient-type switcher), **image fills** (cover / contain)
 - Border with width + color, **outer / inner shadows** (X / Y / blur / spread), 8 CSS filters
+- **Text parity**: text nodes carry the same surface as every other shape — fill, outline,
+  shadows, radius, filters, rotation (and auto-height still works)
+- Fonts: Geist + system faces locally, plus **the full Google Fonts library** (~2,000 families)
+  browsed Figma-style — searchable, category-filtered, self-previewing rows; faces load on demand
+  from the Fontsource CDN (`bun run fonts:index` regenerates the index)
 - Opacity, corner radius (uniform or per-corner), rotation + flips applied to every renderer
   (DOM, canvas, SVG, EPS alike) — via one shared transform helper
 
@@ -67,6 +72,7 @@ state lives in `localStorage`, right in your browser.
 bun install        # bun only — never npm
 bun run dev        # dev server on localhost:5173
 bun run build      # tsc --noEmit + production bundle
+bun run fonts:index  # regenerate public/fonts/google-fonts.json from api.fontsource.org
 bun run preview    # serve the production build
 ```
 

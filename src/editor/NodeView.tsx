@@ -97,6 +97,7 @@ export const ShapeNode = memo(
               transform: shapeTransform(s),
               boxShadow: boxShadowOf(s),
               filter: filtersToCss(s.filters),
+              border: s.stroke ? `${s.strokeWidth ?? 1}px solid ${s.stroke}` : undefined,
             }}
           />
         ) : null
@@ -277,10 +278,12 @@ function TextView({ s }: { s: Shape }) {
         wordBreak: 'break-word',
         position: 'absolute',
         transform: shapeTransform(s),
-        filter:
-          [filtersToCss(s.filters), s.shadow ? `drop-shadow(${s.shadow.x}px ${s.shadow.y}px ${s.shadow.blur}px ${s.shadow.color})` : '']
-            .filter(Boolean)
-            .join(' ') || undefined,
+        // full shape-style surface on the text box: fill, radius, real shadows, outline
+        background: fillToCss(s.fill),
+        borderRadius: radiusToCss(s),
+        boxShadow: boxShadowOf(s),
+        filter: filtersToCss(s.filters),
+        ...(s.stroke && { WebkitTextStroke: `${s.strokeWidth ?? 1}px ${s.stroke}`, paintOrder: 'stroke fill' }),
         ...(editing
           ? { contentEditable: true as unknown as string, suppressContentEditableWarning: true as never, outline: 'none', cursor: 'text' }
           : {}),
