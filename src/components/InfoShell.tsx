@@ -23,7 +23,9 @@ export function InfoShell({ children }: { children: ReactNode }) {
           <FlowerLogo size={28} />
         </button>
         <div className="ml-auto flex items-center gap-3">
-          <LoginPill />
+          <div className="hidden md:block">
+            <LoginPill />
+          </div>
           <button onClick={() => go('/projects')} className={pillLight}>
             Projects
           </button>

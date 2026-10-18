@@ -36,10 +36,9 @@ export default function Dashboard() {
         {/* wordmark dead-center, back to the landing page */}
         <button
           onClick={() => go('/')}
-          className="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center gap-2"
+          className="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center"
         >
-          <FlowerLogo size={18} />
-          <span className="text-[13px] font-semibold tracking-tight">Petals</span>
+          <FlowerLogo size={28} />
         </button>
         <div className="flex items-center gap-3">
           <LoginPill />
