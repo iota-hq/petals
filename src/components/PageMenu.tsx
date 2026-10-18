@@ -37,7 +37,7 @@ export function PageMenu() {
     }
   }, [open])
   return (
-    <div ref={rootRef} data-page-menu="" className="absolute left-5 top-2.5 z-10">
+    <div ref={rootRef} data-page-menu="" className="absolute left-5 top-2.5 z-30">
       <button onClick={() => setOpen((v) => !v)} className={pillDark} aria-expanded={open}>
         {open ? 'Close' : 'Menu'}
       </button>

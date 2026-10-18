@@ -229,10 +229,10 @@ export function LeftPanel({ projectId }: { projectId: string }) {
                 }}
                 onDoubleClick={() => setEditing(s.id)}
                 className={
-                  'group mx-1.5 mb-0.5 flex h-6.5 items-center gap-2 rounded-md pr-0.5 select-none ' +
+                  'group mx-3 mb-0.5 flex h-6.5 items-center gap-2 rounded-md pr-2 select-none ' +
                   (selected ? 'bg-primary/15' : '') +
-                  (hovered && hover?.zone === 'in' ? ' ring-1 ring-inset ring-ring bg-accent' : '') +
-                  (drag?.id === s.id ? ' opacity-50' : ' hover:bg-accent/60')
+                  (drag?.id === s.id ? ' opacity-50' : selected ? ' hover:bg-primary/25' : ' hover:bg-accent/60') +
+                  (hovered && hover?.zone === 'in' ? ' ring-1 ring-inset ring-ring bg-accent' : '')
                 }
                 style={{
                   paddingLeft: 6 + depth * 14,
@@ -323,7 +323,7 @@ function PagesList({ pages, activePage }: { pages: { id: string; name: string }[
           <div
             key={p.id}
             className={
-              'group mx-1.5 flex h-6.5 items-center gap-1.5 rounded-md px-1.5 select-none ' +
+              'group mx-3 flex h-6.5 items-center gap-1.5 rounded-md px-1.5 select-none ' +
               (active ? 'bg-[#2b2b2b] text-foreground' : 'hover:bg-accent/60 text-foreground/80')
             }
           >

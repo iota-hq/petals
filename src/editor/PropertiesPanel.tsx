@@ -996,14 +996,6 @@ function FillField({ s }: { s: Shape }) {
               />
             ))}
           </div>
-          <button
-            onClick={() => addStopAt(50)}
-            aria-label="Add stop"
-            className="-my-1 flex h-6.5 w-full cursor-pointer items-center gap-1.5 rounded-md px-1 text-left text-[12px] font-medium text-muted-foreground hover:text-foreground"
-          >
-            <Plus size={13} />
-            Add stop
-          </button>
           {g.stops[Math.min(sel, g.stops.length - 1)] && (() => {
             const i = Math.min(sel, g.stops.length - 1)
             const st = g.stops[i]

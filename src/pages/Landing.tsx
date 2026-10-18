@@ -31,7 +31,7 @@ export default function Landing() {
       />
 
       {/* nav */}
-      <motion.header {...rise} transition={{ duration: 0.5, ease: 'easeOut' }} className="relative z-10 flex h-14 items-center border-b border-white/10 px-5 md:px-7">
+      <motion.header {...rise} transition={{ duration: 0.5, ease: 'easeOut' }} className="relative z-20 flex h-14 items-center border-b border-white/10 px-5 md:px-7">
       <PageMenu />
       {/* rotating single bloom, dead-center like the mock's wordmark */}
         <img
