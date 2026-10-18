@@ -17,7 +17,8 @@ const ROADMAP: Array<[string, string]> = [
 export default function About() {
   return (
     <InfoShell>
-      <div className="flex flex-col gap-7 text-[15px] leading-relaxed text-foreground/90">
+      <h1 className="text-[34px] font-normal leading-tight tracking-[-0.02em]">About</h1>
+      <div className="mt-10 flex flex-col gap-7 text-[15px] leading-relaxed text-foreground/90">
         <motion.p
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}

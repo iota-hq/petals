@@ -37,13 +37,13 @@ export function PageMenu() {
     }
   }, [open])
   return (
-    <div ref={rootRef} data-page-menu="" className="absolute left-5 top-2.5 z-30">
+    <div ref={rootRef} data-page-menu="" className="absolute left-5 top-2.5 z-30 flex items-center">
       <button onClick={() => setOpen((v) => !v)} className={pillDark} aria-expanded={open}>
         {open ? 'Close' : 'Menu'}
       </button>
       <AnimatePresence>
         {open && (
-          <div className="absolute left-0 top-11 flex w-max flex-col items-stretch gap-1.5">
+          <div className="absolute left-0 top-11 flex w-max flex-col items-stretch gap-1.5 md:static md:ml-1.5 md:flex-row md:items-center">
             {LINKS.map(([label, href], i) => (
               <motion.button
                 key={label}
@@ -52,9 +52,9 @@ export function PageMenu() {
                   go(href)
                 }}
                 className={pillDark + ' justify-center'}
-                initial={{ opacity: 0, y: -10, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -6, transition: { duration: 0.14 } }}
+                initial={{ opacity: 0, x: -10, scale: 0.98 }}
+                animate={{ opacity: 1, x: 0, scale: 1 }}
+                exit={{ opacity: 0, x: -6, transition: { duration: 0.14 } }}
                 transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1], delay: 0.12 + i * 0.1 }}
               >
                 {label}
