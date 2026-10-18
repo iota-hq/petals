@@ -57,10 +57,6 @@ export default function Careers() {
     <InfoShell>
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: easeOut, delay: 0.08 }}>
         <h1 className="text-[34px] font-normal leading-tight tracking-[-0.02em]">Join the team</h1>
-        <p className="mt-3 max-w-xl text-[14px] leading-relaxed text-[#8B8C8D]">
-          We&rsquo;re looking for S-tier talent who ask why things move and exist in the first place — and who, most importantly, have
-          great taste.
-        </p>
       </motion.div>
 
       <motion.section

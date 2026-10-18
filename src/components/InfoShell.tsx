@@ -12,16 +12,15 @@ export function InfoShell({ children }: { children: ReactNode }) {
     <div className="relative min-h-dvh bg-black text-foreground">
       <div
         className="pointer-events-none absolute inset-0 z-0"
-        style={{ background: 'radial-gradient(ellipse 80% 50% at 50% 0%, rgba(244,114,182,0.14), transparent 70%)' }}
+        style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(244, 114, 182, 0.25), transparent 70%), #000000' }}
       />
-      <header className="sticky top-0 z-20 flex h-14 items-center border-b border-white/10 bg-black/80 px-5 backdrop-blur">
+      <header className="sticky top-0 z-20 flex h-14 items-center border-b border-white/10 px-5">
         <PageMenu />
         <button
           onClick={() => go('/')}
           className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center gap-2"
         >
-          <FlowerLogo size={18} />
-          <span className="text-[13px] font-semibold tracking-tight">Petals</span>
+          <FlowerLogo size={28} />
         </button>
         <div className="ml-auto flex items-center gap-3">
           <LoginPill />
