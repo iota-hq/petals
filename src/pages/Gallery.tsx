@@ -1,52 +1,114 @@
 import { motion } from 'motion/react'
-import { InfoShell, InfoTitle, InfoSection } from '@/components/InfoShell'
+import { InfoShell, InfoTitle } from '@/components/InfoShell'
 
 const easeOut = [0.22, 1, 0.36, 1] as const
-
-/** Nine looks, all drawn only with Petals' own fills — gradients, patterns and shapes. */
-const ART: Array<[string, string, React.CSSProperties]> = [
-  ['Petal pink', 'radial', { background: 'radial-gradient(circle at 30% 25%, #f472b6, #a855f7 60%, #1b1b1f)' }],
-  ['Grid frame', 'linear', { background: 'linear-gradient(135deg, #26262c, #3f3f46 45%, #f4f4f5 150%)' }],
-  ['Soft mint', 'radial', { background: 'radial-gradient(circle at 65% 75%, #86efac, #15803d 70%, #101012)' }],
-  ['Conic wheel', 'conic', { background: 'conic-gradient(from 40deg, #f472b6, #818cf8, #34d399, #fbbf24, #f472b6)' }],
-  ['Night stops', 'linear', { background: 'linear-gradient(180deg, #0d0d10, #26262c 55%, #52525b)' }],
-  ['Tilted petals', 'pattern', { background: 'url(/petal-pattern.svg), #1c1c1c', backgroundSize: '46px', backgroundPosition: 'center' }],
-  ['Warm dusk', 'radial', { background: 'radial-gradient(circle at 70% 20%, #fbbf24, #f97316 45%, #7c2d12 85%)' }],
-  ['Blur field', 'linear', { background: 'linear-gradient(120deg, #60a5fa55, transparent 40%), linear-gradient(300deg, #f472b655, transparent 45%), #141418' }],
-  ['Deep forest', 'radial', { background: 'radial-gradient(circle at 50% 90%, #4ade80, #14532d 65%, #0c0c0e)' }],
-]
 
 export default function Gallery() {
   return (
     <InfoShell>
       <InfoTitle
         title="Pieces drawn in Petals"
-        intro="Starter canvases from the team and the community — every one of these is pure Petals output: frames, fills, shadows and nothing else."
+        intro="Starter canvases from the team and the community — every one of these is pure Petals output."
       />
 
       <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
-        {ART.map(([name, kind, style], i) => (
-          <motion.figure
-            key={name}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: easeOut, delay: 0.08 + (i % 3) * 0.08 + Math.floor(i / 3) * 0.1 }}
-            className="overflow-hidden rounded-lg border border-border bg-[#141418]"
-          >
-            <div className="aspect-[4/3]" style={style} />
-            <figcaption className="flex items-center justify-between px-3 py-2.5">
-              <span className="text-[12px] font-medium">{name}</span>
-              <span className="font-mono text-[10px] text-muted-foreground/70">{kind}</span>
-            </figcaption>
-          </motion.figure>
-        ))}
-      </div>
+        {/* the demo reel, full width */}
+        <motion.figure
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: easeOut }}
+          className="overflow-hidden rounded-lg border border-border bg-[#141418] md:col-span-2 md:col-start-1"
+        >
+          <video src="/demo.mp4" autoPlay muted loop playsInline className="aspect-video w-full bg-black object-cover" />
+          <figcaption className="flex items-center justify-between px-3 py-2.5">
+            <span className="text-[12px] font-medium">Demo reel</span>
+            <span className="font-mono text-[10px] text-muted-foreground/70">video</span>
+          </figcaption>
+        </motion.figure>
 
-      <InfoSection>
-        <p className="text-[12px] text-[#8B8C8D]">
-          Have a canvas worth showing? Export it as PNG and send it over — the gallery opens for community work too.
-        </p>
-      </InfoSection>
+        <GalleryImg src="/petals-mobile.png" name="Mobile landing" kind="png" delay={0.08} />
+
+        <GalleryImg src="/petals-mobile-board.png" name="Mobile board" kind="png" delay={0.16} />
+
+        <GalleryImg src="/petals-og.png" name="Postcard" kind="png" delay={0.24} />
+
+        <GalleryImg src="/ellipse.png" name="Ellipse" kind="png" delay={0.32} />
+
+        <GalleryTile
+          name="Petal pattern"
+          kind="tile"
+          delay={0.4}
+          style={{ backgroundImage: 'url(/petal-pattern-tile.svg)', backgroundSize: '46px', backgroundPosition: 'center' }}
+        >
+          <div className="absolute inset-0 bg-black/35" />
+        </GalleryTile>
+
+        <GalleryTile
+          name="Single petal"
+          kind="svg"
+          delay={0.48}
+          style={{ background: '#101013' }}
+        >
+          <img src="/petal-flower.svg" alt="" className="absolute left-1/2 top-1/2 size-14 -translate-x-1/2 -translate-y-1/2" />
+        </GalleryTile>
+
+        <GalleryTile
+          name="Mark on black"
+          kind="svg"
+          delay={0.56}
+          style={{ background: '#141418' }}
+        >
+          <img src="/logo.svg" alt="" className="absolute left-1/2 top-1/2 size-16 -translate-x-1/2 -translate-y-1/2" />
+        </GalleryTile>
+      </div>
     </InfoShell>
+  )
+}
+
+function GalleryImg({ src, name, kind, delay }: { src: string; name: string; kind: string; delay: number }) {
+  return (
+    <motion.figure
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: easeOut, delay }}
+      className="overflow-hidden rounded-lg border border-border bg-[#141418]"
+    >
+      <img src={src} alt={name} loading="lazy" className="aspect-[4/3] w-full object-cover" />
+      <figcaption className="flex items-center justify-between px-3 py-2.5">
+        <span className="text-[12px] font-medium">{name}</span>
+        <span className="font-mono text-[10px] text-muted-foreground/70">{kind}</span>
+      </figcaption>
+    </motion.figure>
+  )
+}
+
+function GalleryTile({
+  name,
+  kind,
+  delay,
+  style,
+  children,
+}: {
+  name: string
+  kind: string
+  delay: number
+  style: React.CSSProperties
+  children?: React.ReactNode
+}) {
+  return (
+    <motion.figure
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: easeOut, delay }}
+      className="overflow-hidden rounded-lg border border-border bg-[#141418]"
+    >
+      <div className="relative aspect-[4/3]" style={style}>
+        {children}
+      </div>
+      <figcaption className="flex items-center justify-between px-3 py-2.5">
+        <span className="text-[12px] font-medium">{name}</span>
+        <span className="font-mono text-[10px] text-muted-foreground/70">{kind}</span>
+      </figcaption>
+    </motion.figure>
   )
 }
