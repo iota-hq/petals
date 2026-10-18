@@ -97,9 +97,9 @@ export default function Landing() {
         </button>
       </main>
 
-      {/* product demo film, autoplaying */}
+      {/* product demo film, autoplaying — on small screens it runs wider than the viewport (half bleeds off each side) */}
       <section className="relative z-10 px-6 pb-16">
-        <div className="mx-auto max-w-5xl overflow-hidden rounded-xl border border-white/10 shadow-2xl shadow-black/50">
+        <div className="w-[190vw] max-w-none overflow-hidden rounded-xl border border-white/10 shadow-2xl shadow-black/50 lg:mx-auto lg:w-full lg:max-w-5xl">
           <video
             src="/demo.mp4"
             autoPlay

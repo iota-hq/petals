@@ -26,8 +26,6 @@ import {
 import { World } from './World'
 import { SelectionOverlay } from './SelectionOverlay'
 import { HoverMeasure } from './HoverMeasure'
-import { DockZones } from './DockZones'
-import { DockDragLayer } from './DockDragLayer'
 
 export function CanvasRoot() {
   const rootRef = useRef<HTMLDivElement>(null)
@@ -265,8 +263,6 @@ export function CanvasRoot() {
           <SelectionOverlay />
           <HoverMeasure />
         </div>
-        <DockZones />
-        <DockDragLayer />
         {empty && !gestureKind && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
             <div className="text-center text-sm text-muted-foreground/60">
