@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import Landing from '@/pages/Landing'
 import Dashboard from '@/pages/Dashboard'
 import EditorPage from '@/editor/EditorPage'
@@ -28,17 +29,47 @@ function migrateHash() {
 export function go(to: string) {
   if (window.location.pathname === to) return
   window.history.pushState({}, '', to)
-  window.dispatchEvent(new Event('petal:navigate'))
+  window.dispatchEvent(new CustomEvent('petal:navigate', { detail: { to } }))
+}
+
+/** Petals bloom that spins while a board opens (shown ~2s). */
+function BoardLoader() {
+  return (
+    <motion.div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.25, ease: 'easeOut' }}
+    >
+      <motion.img
+        src="/favicon.svg"
+        alt="Petals"
+        className="size-12"
+        animate={{ rotate: 360 }}
+        transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+      />
+    </motion.div>
+  )
 }
 
 function App() {
   const [route, setRoute] = useState<Route>(parsePath)
+  const [loader, setLoader] = useState(false)
+  const routeRef = useRef(route)
+  routeRef.current = route
   useEffect(() => {
     migrateHash()
     setRoute(parsePath())
     const on = () => {
       migrateHash()
-      setRoute(parsePath())
+      const next = parsePath()
+      setRoute(next)
+      // entering a board from the dashboard shows the petals loader for ~2s
+      if (routeRef.current.kind === 'dashboard' && next.kind === 'board') {
+        setLoader(true)
+        window.setTimeout(() => setLoader(false), 2000)
+      }
     }
     window.addEventListener('popstate', on)
     window.addEventListener('petal:navigate', on)
@@ -51,14 +82,33 @@ function App() {
     }
   }, [])
 
-  switch (route.kind) {
-    case 'dashboard':
-      return <Dashboard />
-    case 'board':
-      return <EditorPage key={route.id} projectId={route.id} />
-    default:
-      return <Landing />
-  }
+  const key = route.kind === 'board' ? `board:${route.id}` : route.kind
+  const page =
+    route.kind === 'dashboard' ? (
+      <Dashboard />
+    ) : route.kind === 'board' ? (
+      <EditorPage key={route.id} projectId={route.id} />
+    ) : (
+      <Landing />
+    )
+
+  return (
+    <>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={key}
+          className="h-dvh"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.22, ease: 'easeOut' }}
+        >
+          {page}
+        </motion.div>
+      </AnimatePresence>
+      <AnimatePresence>{loader && <BoardLoader key="board-loader" />}</AnimatePresence>
+    </>
+  )
 }
 
 export default App

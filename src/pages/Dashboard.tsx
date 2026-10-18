@@ -1,21 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import { MoreHorizontal, Plus } from 'lucide-react'
 import { go } from '@/App'
 import { buttonVariants } from '@/components/ui/button'
 import { useProjects } from '@/store/projectsStore'
 import type { ProjectMeta } from '@/store/projectsStore'
 import { cn } from '@/lib/utils'
+import { PageMenu, pillDark, pillLight, FlowerLogo } from '@/components/PageMenu'
 
-function FlowerLogo({ size = 20, className }: { size?: number; className?: string }) {
-  return <img src="/petal-flower.svg" alt="" width={size} height={size} className={className} aria-hidden="true" />
-}
-
-/** Compact white pill matching the landing hero button. */
-const pillWhite =
-  'inline-flex h-9 cursor-pointer items-center gap-2 rounded-full bg-white px-4 text-[13px] font-medium text-neutral-950 transition-colors hover:bg-white/90'
-/** Compact dark pill matching the landing nav button. */
-const pillDark =
-  'inline-flex h-9 cursor-pointer items-center gap-2 rounded-full bg-[#262626] px-4 text-[13px] font-medium text-foreground transition-colors hover:bg-[#333333]'
+/** ease used by every entrance in the app — quick start, soft landing */
+const easeOut = [0.22, 1, 0.36, 1] as const
 
 function fmtDate(ts: number) {
   return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
@@ -32,8 +26,18 @@ export default function Dashboard() {
 
   return (
     <div className="flex h-dvh flex-col">
-      <header className="flex h-14 shrink-0 items-center justify-between border-b border-white/10 bg-background px-5 md:px-7">
-        <button className="flex cursor-pointer items-center gap-2" onClick={() => go('/')}>
+      <motion.header
+        initial={{ opacity: 0, y: -14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: easeOut }}
+        className="relative flex h-14 shrink-0 items-center justify-end border-b border-white/10 bg-background px-5 md:px-7"
+      >
+        <PageMenu />
+        {/* wordmark dead-center, back to the landing page */}
+        <button
+          onClick={() => go('/')}
+          className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center gap-2"
+        >
           <FlowerLogo size={18} />
           <span className="text-[13px] font-semibold tracking-tight">Petals</span>
         </button>
@@ -45,32 +49,51 @@ export default function Dashboard() {
           >
             Log in
           </button>
-          <button onClick={newProject} className={sorted.length === 0 ? pillDark : pillWhite}>
+          <button onClick={newProject} className={sorted.length === 0 ? pillDark : pillLight}>
             <Plus size={14} />
             New project
           </button>
         </div>
-      </header>
+      </motion.header>
 
       <main className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">
         <div className="mx-auto max-w-6xl px-6 pb-10 pt-14 md:pt-20">
-          <h1 className="text-[34px] font-medium leading-none tracking-[-0.015em] md:text-[38px]">Projects</h1>
+          <motion.h1
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: easeOut, delay: 0.15 }}
+            className="text-[34px] font-medium leading-none tracking-[-0.015em] md:text-[38px]"
+          >
+            Projects
+          </motion.h1>
 
           {sorted.length === 0 ? (
-            <div className="mt-8 flex flex-col items-center gap-4 rounded-xl border border-dashed border-white/15 py-24 text-center">
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, ease: easeOut, delay: 0.3 }}
+              className="mt-8 flex flex-col items-center gap-4 rounded-xl border border-dashed border-white/15 py-24 text-center"
+            >
               <FlowerLogo size={56} className="opacity-80" />
               <div>
                 <p className="text-[14px] font-medium">Your petals bloom here</p>
               </div>
-              <button onClick={newProject} className={pillWhite}>
+              <button onClick={newProject} className={pillLight}>
                 <Plus size={14} />
                 Create your first project
               </button>
-            </div>
+            </motion.div>
           ) : (
             <div className="mt-8 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
-              {sorted.map((p) => (
-                <ProjectCard key={p.id} project={p} />
+              {sorted.map((p, i) => (
+                <motion.div
+                  key={p.id}
+                  initial={{ opacity: 0, y: 18 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, ease: easeOut, delay: 0.25 + Math.min(i, 8) * 0.06 }}
+                >
+                  <ProjectCard project={p} />
+                </motion.div>
               ))}
             </div>
           )}
