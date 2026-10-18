@@ -54,7 +54,7 @@ export function CanvasRoot() {
   const worldRef = useRef<HTMLDivElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
   // progressive selection: which shape stack we're drilling into and how deep
-  const drillRef = useRef<{ key: string; level: number; lastAt: number; lastText: string | null }>({ key: '', level: 0, lastAt: -1e9, lastText: null })
+  const drillRef = useRef<{ key: string; level: number; lastText: string | null }>({ key: '', level: 0, lastText: null })
   const tool = useUi((s) => s.tool)
   const space = useUi((s) => s.space)
   const empty = useDoc((s) => Object.keys(s.nodes).length === 0)
@@ -259,26 +259,20 @@ export function CanvasRoot() {
     const chain = nodeEl ? shapeChainUp(nodeEl, doc.nodes) : []
     if (!chain.length) {
       e.preventDefault()
-      drillRef.current = { key: '', level: 0, lastAt: -1e9, lastText: null }
+      drillRef.current = { key: '', level: 0, lastText: null }
       ui.setGesture({ kind: 'marquee', start: p, point: p, additive: e.shiftKey })
       if (!e.shiftKey) ui.clearSelection()
       return
     }
     const d = drillRef.current
     const key = chain.join('>')
-    // pointerdown carries no click count in Chromium (detail is always 0), so
-    // "is this press part of a double-click?" is judged by our own clock: a
-    // pause > 400 ms or a different stack restarts the drill at the outermost
-    const now = performance.now()
-    const changed = key !== d.key
-    if (changed || now - d.lastAt > 400) {
+    // clicking a stack again keeps the drilled depth (so a shape you entered
+    // stays grabbable); only a different stack restarts at the outermost
+    if (key !== d.key) {
       d.key = key
       d.level = 0
-      // lastText survives a pause: double-clicking text, waiting, then
-      // double-clicking again is still the "select text, then edit" flow
-      if (changed) d.lastText = null
+      d.lastText = null
     }
-    d.lastAt = now
     const pickId = chain[Math.min(d.level, chain.length - 1)]
     if (e.shiftKey) {
       ui.toggleSelection(pickId)

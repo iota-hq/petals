@@ -1389,6 +1389,46 @@ function FlowPick({ value, onChange }: { value: 'v' | 'h' | undefined; onChange:
   )
 }
 
+/** Frame main-axis sizing: fixed keeps w/h, hug grows to fit content. */
+function SizingPick({ value, onChange }: { value: 'fixed' | 'hug'; onChange: (v: 'fixed' | 'hug') => void }) {
+  return (
+    <div className="flex w-full items-center gap-1 rounded-md p-0.5" style={{ background: '#262626' }}>
+      {(['fixed', 'hug'] as const).map((v) => (
+        <button
+          key={v}
+          onClick={() => onChange(v)}
+          className={
+            'flex h-7 flex-1 cursor-pointer items-center justify-center rounded-md text-[11px] font-medium text-muted-foreground hover:text-foreground ' +
+            (value === v ? 'bg-[#353535] text-foreground' : '')
+          }
+          aria-label={v === 'fixed' ? 'Fixed frame' : 'Hug frame'}
+        >
+          {v === 'fixed' ? 'Fixed' : 'Hug'}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** Flow-children axis stretch: a compact per-axis Fixed/Fill toggle. */
+function FillPick({ label, filled, onToggle }: { label: 'W' | 'H'; filled: boolean; onToggle: () => void }) {
+  return (
+    <div className="flex items-center gap-1 rounded-md p-0.5" style={{ background: '#262626' }}>
+      <span className="pl-1.5 text-[11px] font-medium text-muted-foreground">{label}</span>
+      <button
+        onClick={onToggle}
+        aria-label={(filled ? 'Fixed ' : 'Fill ') + (label === 'W' ? 'width' : 'height')}
+        className={
+          'flex h-7 w-12 cursor-pointer items-center justify-center rounded-md text-[10px] font-medium ' +
+          (filled ? 'bg-[#353535] text-foreground' : 'text-muted-foreground hover:text-foreground')
+        }
+      >
+        {filled ? 'Fill' : 'Fixed'}
+      </button>
+    </div>
+  )
+}
+
 /** Frame layout: free positioning or auto-flow children, with gap + alignment. */
 function LayoutSection({ s }: { s: Shape }) {
   const flow = s.layoutFlow
@@ -1418,6 +1458,12 @@ function LayoutSection({ s }: { s: Shape }) {
               onLive={(v) => live(s.id, { gap: Math.max(0, v) }, 'Gap')}
               onEnd={end}
               onCommit={(v) => setLow({ gap: Math.max(0, v) }, 'Gap')}
+            />
+          </Row>
+          <Row>
+            <SizingPick
+              value={s.sizingMain ?? 'fixed'}
+              onChange={(v) => setLow({ sizingMain: v === 'hug' ? 'hug' : undefined }, v === 'hug' ? 'Hug frame' : 'Fixed frame')}
             />
           </Row>
           <Row>
@@ -1893,6 +1939,8 @@ export function PropertiesPanel() {
   const s = shapes[0]
   const isLine = s.type === 'line'
   const commitProp = (patch: ShapePatch, label: string) => setProps([s.id], patch, label)
+  // children of an auto-layout frame can stretch along the flow
+  const parentFlow = (s.parentId && nodes[s.parentId]?.type === 'frame' ? nodes[s.parentId] : undefined)?.layoutFlow
 
   const fillEl =
     (s.type === 'rect' || s.type === 'ellipse' || s.type === 'frame' || s.type === 'text') && (
@@ -1973,6 +2021,24 @@ export function PropertiesPanel() {
                 />
               )}
             </Row>
+            {parentFlow && s.type !== 'text' && (
+              <Row>
+                <FillPick
+                  label="W"
+                  filled={parentFlow === 'h' ? !!s.mainFill : !!s.crossFill}
+                  onToggle={() =>
+                    commitProp(parentFlow === 'h' ? { mainFill: !s.mainFill } : { crossFill: !s.crossFill }, 'Fill width')
+                  }
+                />
+                <FillPick
+                  label="H"
+                  filled={parentFlow === 'v' ? !!s.mainFill : !!s.crossFill}
+                  onToggle={() =>
+                    commitProp(parentFlow === 'v' ? { mainFill: !s.mainFill } : { crossFill: !s.crossFill }, 'Fill height')
+                  }
+                />
+              </Row>
+            )}
           </Section>
         )}
 

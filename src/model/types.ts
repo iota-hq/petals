@@ -119,6 +119,11 @@ export interface Shape {
   gap?: number
   layoutMain?: 0 | 1 | 2
   layoutCross?: 0 | 1 | 2
+  // frame main-axis sizing while in flow: fixed keeps w/h, hug grows to fit content
+  sizingMain?: 'fixed' | 'hug'
+  // flow-children stretching: fill the parent's free main/cross space
+  mainFill?: boolean
+  crossFill?: boolean
   // text
   text?: string
   fontSize?: number

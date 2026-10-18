@@ -130,6 +130,17 @@ export const useDoc = create<DocStore>((set, get) => {
   const reflowFrames = (nodes: Record<string, Shape>, activePage: string) => {
     const flows = Object.values(nodes).filter((f) => f.type === 'frame' && f.layoutFlow && f.pageId === activePage)
     if (!flows.length) return
+    // deepest first: a hug frame resizes itself, which its parent must account for
+    const depth = (id: string): number => {
+      let d = 0
+      let n = nodes[id]
+      while (n?.parentId) {
+        d++
+        n = nodes[n.parentId]
+      }
+      return d
+    }
+    flows.sort((a, b) => depth(b.id) - depth(a.id))
     for (const f of flows) {
       const kids = Object.values(nodes)
         .filter((k) => k.parentId === f.id && k.type !== 'line')
@@ -139,28 +150,64 @@ export const useDoc = create<DocStore>((set, get) => {
       const g = Math.max(0, f.gap ?? 0)
       const main = f.layoutMain === 1 ? 1 : f.layoutMain === 2 ? 2 : 0
       const cross = f.layoutCross === 1 ? 1 : f.layoutCross === 2 ? 2 : 0
+      const hug = f.sizingMain === 'hug'
       // child x/y are relative to the frame's margin-inset origin (offsetForParent),
       // so the layout cursor runs 0..(inner) inside that box
-      const innerW = f.w - m.l - m.r
-      const innerH = f.h - m.t - m.b
-      if (innerW < 0 || innerH < 0) continue
-      if (f.layoutFlow === 'v') {
-        const total = kids.reduce((a, k) => a + k.h, 0) + g * Math.max(0, kids.length - 1)
-        let cursor = main === 0 ? 0 : main === 1 ? (innerH - total) / 2 : innerH - total
-        for (const k of kids) {
-          const x = cross === 0 ? 0 : cross === 1 ? (innerW - k.w) / 2 : innerW - k.w
-          if (Math.abs(k.x - x) > 0.01) k.x = x
-          if (Math.abs(k.y - cursor) > 0.01) k.y = cursor
-          cursor += k.h + g
+      const innerW = Math.max(0, f.w - m.l - m.r)
+      const innerH = Math.max(0, f.h - m.t - m.b)
+      const vert = f.layoutFlow === 'v'
+      // main axis: w for horizontal flow, h for vertical
+      const mainAxis = vert ? 'h' : 'w'
+      const innerMain = vert ? innerH : innerW
+      const sizeOf = (k: Shape) => (mainAxis === 'w' ? k.w : k.h)
+      const setSize = (k: Shape, v: number) => {
+        if (mainAxis === 'w') {
+          if (Math.abs(k.w - v) > 0.01) k.w = v
+        } else {
+          if (Math.abs(k.h - v) > 0.01) k.h = v
         }
-      } else {
-        const total = kids.reduce((a, k) => a + k.w, 0) + g * Math.max(0, kids.length - 1)
-        let cursor = main === 0 ? 0 : main === 1 ? (innerW - total) / 2 : innerW - total
+      }
+      // fill children share the remaining main space; fills are inert in a hug frame
+      const gaps = g * Math.max(0, kids.length - 1)
+      if (!hug && kids.some((k) => k.mainFill)) {
+        const fixedSum = kids.filter((k) => !k.mainFill).reduce((a, k) => a + sizeOf(k), 0)
+        const share = Math.max(0, (innerMain - gaps - fixedSum) / kids.filter((k) => k.mainFill).length)
+        for (const k of kids) if (k.mainFill) setSize(k, share)
+      }
+      if (cross === 1 || cross === 2 || kids.some((k) => k.crossFill)) {
         for (const k of kids) {
-          const y = cross === 0 ? 0 : cross === 1 ? (innerH - k.h) / 2 : innerH - k.h
+          if (k.crossFill) {
+            if (mainAxis === 'w') {
+              if (Math.abs(k.h - innerH) > 0.01) k.h = innerH
+            } else {
+              if (Math.abs(k.w - innerW) > 0.01) k.w = innerW
+            }
+          }
+        }
+      }
+      const total = kids.reduce((a, k) => a + sizeOf(k), 0) + gaps
+      let cursor = hug || kids.some((k) => k.mainFill) ? 0 : main === 0 ? 0 : main === 1 ? (innerMain - total) / 2 : innerMain - total
+      for (const k of kids) {
+        const crossSize = mainAxis === 'w' ? k.h : k.w
+        const crossInner = mainAxis === 'w' ? innerH : innerW
+        const crossPos = cross === 0 ? 0 : cross === 1 ? (crossInner - crossSize) / 2 : crossInner - crossSize
+        if (mainAxis === 'w') {
           if (Math.abs(k.x - cursor) > 0.01) k.x = cursor
-          if (Math.abs(k.y - y) > 0.01) k.y = y
-          cursor += k.w + g
+          if (Math.abs(k.y - crossPos) > 0.01) k.y = crossPos
+        } else {
+          if (Math.abs(k.x - crossPos) > 0.01) k.x = crossPos
+          if (Math.abs(k.y - cursor) > 0.01) k.y = cursor
+        }
+        cursor += sizeOf(k) + g
+      }
+      // hug grows the frame's main axis to fit content + padding
+      if (hug) {
+        const contentMain = kids.reduce((a, k) => a + sizeOf(k), 0) + g * Math.max(0, kids.length - 1)
+        const full = contentMain + (mainAxis === 'w' ? m.l + m.r : m.t + m.b)
+        if (mainAxis === 'w') {
+          if (Math.abs(f.w - full) > 0.01) f.w = full
+        } else {
+          if (Math.abs(f.h - full) > 0.01) f.h = full
         }
       }
     }

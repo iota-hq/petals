@@ -1113,7 +1113,11 @@ function codeEmit(
     }
     cls.push(`w-[${px(s.w)}px]`, `h-[${px(s.h)}px]`)
   } else {
-    cls.push(`w-[${px(s.w)}px]`, `h-[${px(s.h)}px]`)
+    // flow item: fills replace the fixed main/cross size (main = w in a row, h in a column)
+    if (s.mainFill) cls.push('flex-1')
+    else cls.push(flow === 'h' ? `w-[${px(s.w)}px]` : `h-[${px(s.h)}px]`)
+    if (s.crossFill) cls.push('self-stretch')
+    else cls.push(flow === 'h' ? `h-[${px(s.h)}px]` : `w-[${px(s.w)}px]`)
   }
   if (s.type !== 'line') {
     const radii = cornersOf(s)
@@ -1166,6 +1170,12 @@ function codeEmit(
       const cross = s.layoutCross === 1 ? 'items-center' : s.layoutCross === 2 ? 'items-end' : 'items-start'
       cls.push(main, cross)
       if (s.gap) cls.push(`gap-[${px(s.gap)}px]`)
+      if (s.sizingMain === 'hug') {
+        // the hugged axis sizes from content: drop the fixed class
+        const drop = s.layoutFlow === 'v' ? `h-[${px(s.h)}px]` : `w-[${px(s.w)}px]`
+        const i = cls.indexOf(drop)
+        if (i >= 0) cls.splice(i, 1)
+      }
     }
     const m = s.margin
     if (m) {
