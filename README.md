@@ -31,6 +31,9 @@ state lives in `localStorage`, right in your browser.
 - Frame / rectangle / ellipse / line / image / text tools; draw into frames (nesting) or the page
 - Frame presets (incl. **Desktop 1080p**, 1920×1080) that **auto-fit on screen** when created
 - Multi-select, marquee, shift-click; align panel; position & size with constraint-aware scrub fields
+- **Drill-down selection** (Figma-style): a click selects the outermost shape, a double-click drills
+  one level deeper; text takes one more double-click to enter inline editing. A plain click on the
+  same nested stack keeps your drilled depth (so deep children stay movable) — anything else resets
 - **Right-click context menu on the canvas**: bring to front / send to back, flip H / flip V,
   copy, paste, **copy as ▸ Code / PNG / SVG**, group selection, duplicate, lock/unlock, hide/show,
   rename, delete — every op implemented for real against the document model
@@ -50,6 +53,17 @@ state lives in `localStorage`, right in your browser.
 - Opacity, corner radius (uniform or per-corner), rotation + flips applied to every renderer
   (DOM, canvas, SVG, EPS alike) — via one shared transform helper
 
+### Auto layout
+- Frames can take a **flow**: vertical / horizontal, with **gap** and alignment controls
+  (justify / align, progressively disclosed after a flow is chosen)
+- **Sizing per frame**: fixed or **hug contents**; children can **fill** the leftover space along
+  the main axis and/or stretch across it — Figma semantics (toggling fill back to fixed keeps the
+  current size)
+- A reflow engine repositions and resizes children deepest-frames-first, so hug results propagate
+  through nesting; margins are respected as inset origins
+- The exported code mirrors the model: flow frames emit `flex flex-col/row` + `gap`, fill children
+  emit `flex-1` / `self-stretch`, and hugged axes drop their size class
+
 ### Layers & documents
 - Multi-page documents; layers panel with drag-reorder (above / below / nest-in), hide & lock
   toggles, inline rename (double-click, or via the context menu)
@@ -64,7 +78,20 @@ state lives in `localStorage`, right in your browser.
 - Vector: **SVG**, plus a hand-written PostScript writer — **EPS** (and `.ai` interop) with solid
   fills, PS shading for gradients, rounded corners, embedded rasters and Helvetica text
 - **Code**: right-click ▸ Copy as ▸ Code, or Export menu — produces a React component styled with
-  **Tailwind** (+ inline style only where Tailwind can't express gradients/filters/typography)
+  **Tailwind** (+ inline style only where Tailwind can't express gradients/filters/typography);
+  the Export menu variant ships a **zip** with `Component.tsx` plus real `assets/image-N.png` files
+  and clean `import image1 from './assets/image-1.png'` statements instead of base64. Output aims
+  to be honest markup: whole-pixel rounding, standard radius utilities, semantic `<p>` text,
+  flex classes for auto-layout frames, and a single shape exports standalone with no wrapper
+
+### The site around the tool
+- Marketing pages baked into the app: **landing**, **About**, **Careers** (applications post to
+  Formspree) and a **Gallery** of starter canvases, sharing one info-shell chrome and the
+  pink-gradient identity
+- SEO/OG meta + image, anonymized analytics
+- **Sponsors**: iota and "+" tiles in the editor's sidebar footer (the plus opens the Contra
+  sponsor page), plus a timed on-canvas sponsor bubble — appears 10 s after you open the board,
+  stays 30 s, links to Contra
 
 ## Getting started
 
@@ -100,8 +127,10 @@ bun build scripts/e2eVerify.ts  --target=node --external=playwright-core --outfi
 bun build scripts/menuVerify.ts --target=node --external=playwright-core --outfile=scripts/menuVerify.mjs && node scripts/menuVerify.mjs  # context menu ops, copy/paste, group, lambdas, alt-measure
 ```
 
-Both end with a pass/fail summary, a console-error report and a non-zero exit code on failure.
-Screenshots land in `test-artifacts/`.
+Also in `scripts/`, run the same way: `popVerify` (popovers/inspector rows), `textCommitVerify`
+(text editing + commit), `fontVerify` (Google Fonts browser), `dockVerify` (panel docking) and
+export checks. Every suite ends with a pass/fail summary, a console-error report and a non-zero
+exit code on failure. Screenshots land in `test-artifacts/`.
 
 ## Making Petals scriptable — MCP
 
@@ -216,13 +245,17 @@ does not have yet:
 
 - **File & workspace management** — multi-file workspaces with folders, file thumbnails for the
   dashboard, cloud persistence + version history browser
-- **Design system** — design tokens (named color/type/spacing), shared icon library, global styles
+- **Design system** — design tokens (named color/type/spacing) with token output in code export,
+  shared icon library, global styles
 - **Canvas intelligence** — layer search ("all fills #f472b6"), structural query API for tooling,
   rulers/guides/snap-to-grid, prototyping links between frames
-- **Elements & drawing** — auto layout (flexbox-like frames), constraint-based resizing, boolean
-  ops, pen/vector editing, component + variants, rich text
+- **Elements & drawing** — constraint-based resizing, boolean ops, pen/vector editing,
+  component + variants, rich text
+- **Auto layout v2** — grid flow, reverse direction, wrapping, per-child spacing overrides
 - **Assets & media** — AI image generation, SVG authoring/vectorize, image crop/mask mode
 - **Design ↔ code bridge** — live round-trip (push code/artboards onto the canvas, pull updates back)
+- **Code export polish** — design-token output (CSS vars / Tailwind theme), `<button>` inference,
+  component-name dedupe across multi-component exports
 - **Formats** — PDF export, per-node batch export marks
 
 Petal is an independent project. The Atelier codebase (`D:\Projects\reference\atelier`) was used

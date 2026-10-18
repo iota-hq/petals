@@ -6,13 +6,13 @@ const CONTRA_URL = 'https://contra.com/products/bfrEtU52-sponsor-petals'
 
 /**
  * One-time sponsor nudge on the board: appears after 10 s on the page,
- * closes itself 8 s later. Fixed so it may overlap the left sidebar.
+ * closes itself 30 s later. Fixed so it may overlap the left sidebar.
  */
 export function SponsorBubble() {
   const [phase, setPhase] = useState<'wait' | 'show' | 'done'>('wait')
   useEffect(() => {
     const t1 = setTimeout(() => setPhase('show'), 10000)
-    const t2 = setTimeout(() => setPhase('done'), 18000)
+    const t2 = setTimeout(() => setPhase('done'), 40000)
     return () => {
       clearTimeout(t1)
       clearTimeout(t2)
@@ -30,7 +30,7 @@ export function SponsorBubble() {
             className="pointer-events-auto"
           >
             <Bubble variant="tinted" align="start">
-              <BubbleContent className="rounded-2xl border-0 bg-[#e063bb]/15 text-[12.5px] text-foreground">
+              <BubbleContent className="rounded-2xl border-0 bg-white! text-[12.5px] text-neutral-950!">
                 Want to become a sponsor?{' '}
                 <a href={CONTRA_URL} target="_blank" rel="noreferrer" className="cursor-pointer font-medium text-[#e063bb] hover:underline">
                   click here
