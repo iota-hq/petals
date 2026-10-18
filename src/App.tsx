@@ -32,7 +32,7 @@ export function go(to: string) {
   window.dispatchEvent(new CustomEvent('petal:navigate', { detail: { to } }))
 }
 
-/** Petals bloom that spins while a board opens (shown ~2s). */
+/** Petals bloom that spins (at the logo's own 6.67s pace) while a board opens (shown ~1s). */
 function BoardLoader() {
   return (
     <motion.div
@@ -42,12 +42,10 @@ function BoardLoader() {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.25, ease: 'easeOut' }}
     >
-      <motion.img
-        src="/favicon.svg"
+      <img
+        src="/petal-flower.svg"
         alt="Petals"
         className="size-12"
-        animate={{ rotate: 360 }}
-        transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
       />
     </motion.div>
   )
@@ -68,7 +66,7 @@ function App() {
       // entering a board from the dashboard shows the petals loader for ~2s
       if (routeRef.current.kind === 'dashboard' && next.kind === 'board') {
         setLoader(true)
-        window.setTimeout(() => setLoader(false), 2000)
+        window.setTimeout(() => setLoader(false), 1000)
       }
     }
     window.addEventListener('popstate', on)
