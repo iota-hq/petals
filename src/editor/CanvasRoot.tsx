@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { offsetForParent, type Vec } from '@/model/geometry'
-import { commitActiveTextEdit, dockCamera, dockZoneAt } from './commands'
+import { commitActiveTextEdit } from './commands'
 import { useDoc } from '@/store/docStore'
 import { zoomAt, useUi, setZoomAroundCenter, type Handle } from '@/store/uiStore'
 import { Hint, TooltipProvider } from '@/components/ui/tooltip'
@@ -27,6 +27,7 @@ import { World } from './World'
 import { SelectionOverlay } from './SelectionOverlay'
 import { HoverMeasure } from './HoverMeasure'
 import { DockZones } from './DockZones'
+import { DockDragLayer } from './DockDragLayer'
 
 export function CanvasRoot() {
   const rootRef = useRef<HTMLDivElement>(null)
@@ -36,7 +37,6 @@ export function CanvasRoot() {
   const space = useUi((s) => s.space)
   const empty = useDoc((s) => Object.keys(s.nodes).length === 0)
   const gestureKind = useUi((s) => s.gesture?.kind)
-  const dockZones = useUi((s) => s.dockZones)
   const canvasBg = useUi((s) => s.canvasBg)
 
   // register canvas element + sync camera to both layers without React re-render
@@ -113,18 +113,11 @@ export function CanvasRoot() {
         endpointLive(p)
       }
     }
-    const onUp = (e: PointerEvent) => {
+    const onUp = () => {
       const g = useUi.getState().gesture
       if (!g) return
-      if (g.kind === 'pan') {
-        // drag-to-fill: releasing the canvas over an edge strip fills the view from that side
-        const zone = useUi.getState().dockZones ? dockZoneAt(e.clientX, e.clientY) : null
-        useUi.getState().setGesture(null)
-        if (zone) {
-          dockCamera(zone)
-          useUi.getState().setDockZones(false)
-        }
-      } else if (g.kind === 'create') commitCreate(g.tool, g.start, g.point)
+      if (g.kind === 'pan') useUi.getState().setGesture(null)
+      else if (g.kind === 'create') commitCreate(g.tool, g.start, g.point)
       else if (g.kind === 'marquee') finishMarquee(g.start, g.point, g.additive)
       else if (g.kind === 'move') finishMove()
       else if (g.kind === 'resize') finishResize()
@@ -173,7 +166,7 @@ export function CanvasRoot() {
     const clientVec: Vec = { x: e.clientX, y: e.clientY }
 
     // pan gestures
-    if (e.button === 1 || ui.space || ui.tool === 'hand' || ui.dockZones) {
+    if (e.button === 1 || ui.space || ui.tool === 'hand') {
       e.preventDefault()
       ui.setGesture({ kind: 'pan', startClient: clientVec, startCam: ui.camera })
       return
@@ -246,7 +239,7 @@ export function CanvasRoot() {
   const cursorValue =
     gestureKind === 'pan'
       ? 'grabbing'
-      : tool === 'hand' || dockZones
+      : tool === 'hand'
         ? 'grab'
         : tool === 'select'
           ? 'default'
@@ -273,6 +266,7 @@ export function CanvasRoot() {
           <HoverMeasure />
         </div>
         <DockZones />
+        <DockDragLayer />
         {empty && !gestureKind && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
             <div className="text-center text-sm text-muted-foreground/60">

@@ -627,9 +627,11 @@ export function afterLoadCamera() {
 
 export type DockZone = 'top' | 'bottom' | 'left' | 'right'
 
-/** Geometry shared by the visual strips (DockZones) and hit-testing: an inset box reaching `strip` px from each canvas edge. */
-export const DOCK_INSET = 8
-export const DOCK_STRIP = 96
+/** Geometry shared by the visual strips (DockZones) and hit-testing: thin dashed strips inset `inset` px from each canvas edge. */
+export const DOCK_INSET = 12
+export const DOCK_STRIP = 36
+/** Invisible tolerance band for dropping/landing past the thin visual strip. */
+export const DOCK_BAND = 72
 
 /** Which edge strip sits under this client point (null = none). Left/right win at corners. */
 export function dockZoneAt(cx: number, cy: number): DockZone | null {
@@ -638,7 +640,7 @@ export function dockZoneAt(cx: number, cy: number): DockZone | null {
   const r = el.getBoundingClientRect()
   const px = cx - r.left
   const py = cy - r.top
-  const edge = DOCK_INSET + DOCK_STRIP
+  const edge = DOCK_INSET + DOCK_BAND
   if (px < 0 || py < 0 || px > r.width || py > r.height) return null
   if (px < edge) return 'left'
   if (px > r.width - edge) return 'right'
@@ -686,12 +688,12 @@ export function dockCamera(zone: DockZone) {
   if (zone === 'top' || zone === 'bottom') {
     const zoom = clampZoom(Math.min(4, (cw - pad * 2) / b.w))
     const x = (cw - b.w * zoom) / 2 - b.x * zoom
-    const y = zone === 'top' ? anchor - b.y * zoom : ch - anchor - b.h * zoom - b.y * zoom
+    const y = zone === 'top' ? Math.min(anchor, ch * 0.18) - b.y * zoom : ch - Math.min(anchor, ch * 0.18) - b.h * zoom - b.y * zoom
     tweenCamera({ x, y, zoom })
   } else {
     const zoom = clampZoom(Math.min(4, (ch - pad * 2) / b.h))
     const y = (ch - b.h * zoom) / 2 - b.y * zoom
-    const x = zone === 'left' ? anchor - b.x * zoom : cw - anchor - b.w * zoom - b.x * zoom
+    const x = zone === 'left' ? Math.min(anchor, cw * 0.18) - b.x * zoom : cw - Math.min(anchor, cw * 0.18) - b.w * zoom - b.x * zoom
     tweenCamera({ x, y, zoom })
   }
 }

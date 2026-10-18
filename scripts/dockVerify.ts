@@ -64,20 +64,20 @@ const dragBtn = page.locator('[aria-label="Drag canvas to fill the screen"]')
 ok((await dragBtn.count()) === 1, 'toolbar drag-to-fill button present')
 await dragBtn.click()
 await page.waitForTimeout(200)
-ok((await page.locator('[data-dock-zone]').count()) === 4, 'four dashed strips appear')
+ok((await page.locator('[data-dock-zone]').count()) === 6, 'six thin strips appear')
 
-// hover lights the left strip (canvas starts right of the ~264px layers panel)
-await page.mouse.move(320, 450)
+// hover lights the left strip (thin strip spans canvas-left+12 .. +48)
+await page.mouse.move(270, 450)
 await page.waitForTimeout(120)
 const leftBg = await page.evaluate(
   () => document.querySelector('[data-dock-zone="left"]')?.className ?? '',
 )
-ok(/bg-\[#f472b6\]\/15/.test(leftBg), 'left strip lights on hover')
+ok(/bg-\[#f472b6\]\/20/.test(leftBg), 'left strip lights on hover')
 
 // drag the canvas (any pointerdown pans in this mode) and drop on the left strip
 await page.mouse.move(900, 500)
 await page.mouse.down()
-for (let i = 1; i <= 6; i++) await page.mouse.move(900 - i * 97, 500)
+for (let i = 1; i <= 6; i++) await page.mouse.move(900 - i * 105, 500)
 await page.mouse.up()
 await page.waitForTimeout(500)
 
@@ -95,10 +95,10 @@ ok((await page.locator('[data-dock-zone]').count()) === 0, 'mode turns off after
 // right strip round-trip
 await dragBtn.click()
 await page.waitForTimeout(150)
-ok((await page.locator('[data-dock-zone]').count()) === 4, 're-toggle shows strips again')
+ok((await page.locator('[data-dock-zone]').count()) === 6, 're-toggle shows strips again')
 await page.mouse.move(900, 500)
 await page.mouse.down()
-for (let i = 1; i <= 6; i++) await page.mouse.move(900 + i * 50, 500)
+for (let i = 1; i <= 6; i++) await page.mouse.move(900 + i * 55, 500)
 await page.mouse.up()
 await page.waitForTimeout(500)
 ok((await page.locator('[data-dock-zone]').count()) === 0, 'right drop docks and closes mode')
