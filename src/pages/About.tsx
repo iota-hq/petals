@@ -4,9 +4,9 @@ import { go } from '@/App'
 
 const easeOut = [0.22, 1, 0.36, 1] as const
 
-/** inline link inside prose, matching the other underlined text links */
+/** inline link inside prose, white dotted underline like the other text links */
 const inlineLink =
-  'inline cursor-pointer underline decoration-border underline-offset-4 hover:decoration-foreground/40'
+  'inline cursor-pointer underline decoration-dotted decoration-white/60 underline-offset-4 hover:decoration-white'
 
 const ROADMAP: Array<[string, string]> = [
   ['Image and logo library', 'browse and drop in ready-made assets'],
@@ -23,11 +23,7 @@ export default function About() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.55, ease: easeOut, delay: 0.05 }}
         >
-          <span className="inline-flex translate-y-0.5 items-center gap-2 align-baseline">
-            <img src="/petal-flower.svg" alt="" width={20} height={20} aria-hidden="true" />
-            <span className="font-semibold tracking-tight">Petals</span>
-          </span>{' '}
-          is a free Figma alternative for creating designs in your browser.
+          <span className="font-semibold tracking-tight">Petals</span> is a free Figma alternative for creating designs in your browser.
         </motion.p>
 
         <motion.p
@@ -48,7 +44,7 @@ export default function About() {
         >
           Petals is fully vibe coded, so you may run into bugs. If you do, I&rsquo;d love to hear about it. Send bugs,
           feedback, and copyright concerns to{' '}
-          <a href="mailto:bikash13763@gmail.com" className="underline decoration-border underline-offset-4 hover:decoration-foreground/40">
+          <a href="mailto:bikash13763@gmail.com" className={inlineLink}>
             bikash13763@gmail.com
           </a>.
         </motion.p>
