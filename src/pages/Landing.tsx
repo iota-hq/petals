@@ -52,6 +52,38 @@ export default function Landing() {
 
       {/* hero */}
       <main className="relative z-10 flex flex-col items-center px-6 pb-16 pt-28 text-center md:pt-32">
+        {/* sponsors strip: iota today, plus opens the contra page */}
+        <motion.div
+          {...rise}
+          transition={{ duration: 0.55, ease: 'easeOut', delay: 0.15 }}
+          className="mb-8 flex items-center gap-3 rounded-full border border-white/10 bg-white/[0.06] py-1.5 pl-4 pr-1.5 backdrop-blur"
+        >
+          <span className="text-[11px] font-medium tracking-[0.14em] text-[#8B8C8D]">Sponsors</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="text-[#8B8C8D]">
+            <path d="M5 12h14" />
+            <path d="m13 6 6 6-6 6" />
+          </svg>
+          <a
+            href="https://useiota.space/?ref=petals&utm_source=petals&utm_medium=referral&utm_campaign=landing-hero"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="iota"
+            className="flex size-7 cursor-pointer items-center justify-center overflow-hidden rounded-full transition-transform duration-150 hover:scale-105"
+          >
+            <img src="/iota-hq-sponsor.png" alt="iota" className="size-7 rounded-full" draggable={false} />
+          </a>
+          <a
+            href="https://contra.com/products/bfrEtU52-sponsor-petals"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Become a sponsor"
+            className="flex size-7 cursor-pointer items-center justify-center rounded-full border border-white/15 text-[#8B8C8D] transition-colors hover:border-white/30 hover:text-foreground"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </a>
+        </motion.div>
         <h1 className="text-[34px] font-normal leading-[1.18] tracking-[-0.02em] md:text-[38px]">
           <motion.span {...rise} transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1], delay: 0.2 }} className="block">
             Design, prototype, and ship,
