@@ -87,6 +87,8 @@ function Section({
   onRemove,
   open: openProp,
   defaultOpen = true,
+  /** row-wide click: for "+" sections, clicking anywhere on the row opens/acts (falls back to normal toggle) */
+  onActivate,
 }: {
   title: string
   subtitle?: string
@@ -97,6 +99,7 @@ function Section({
   /** force presence of content (addable style); undefined = self-managed collapse */
   open?: boolean
   defaultOpen?: boolean
+  onActivate?: (e: React.MouseEvent) => void
 }) {
   const [openState, setOpenState] = useState(defaultOpen)
   const [collapsed, setCollapsed] = useState(false)
@@ -106,6 +109,11 @@ function Section({
   const toggle = () => {
     if (addable) setCollapsed((c) => !c)
     else setOpenState((o) => !o)
+  }
+  const rowActivate = (e: React.MouseEvent) => (onActivate ? onActivate(e) : onAdd ? onAdd() : toggle())
+  const rowClick = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button')) return
+    rowActivate(e)
   }
 
   let indicator: ReactNode = null
@@ -141,9 +149,9 @@ function Section({
 
   return (
     <section className={(open ? 'px-3.5 py-3' : 'px-3.5 py-2') + ' border-b border-border'}>
-      <div className="flex min-h-5 items-center justify-between gap-1">
+      <div className="flex min-h-5 items-center justify-between gap-1" onClick={rowClick} onMouseDown={(e) => e.preventDefault()}>
         <button
-          onClick={toggle}
+          onClick={rowActivate}
           className="flex min-w-0 cursor-pointer items-baseline gap-1.5 text-left"
           aria-label={`Toggle ${title}`}
         >
@@ -410,8 +418,9 @@ function usePopoverDismiss(ref: React.RefObject<HTMLElement | null>, onClose: ()
 }
 
 /** Fixed-position popover state anchored beside the trigger — it opens over the canvas, off the panel. */
-function usePopFixed() {
-  const [open, setOpen] = useState(false)
+type PopFixed = ReturnType<typeof usePopFixed>
+
+function usePopFixed() {  const [open, setOpen] = useState(false)
   const [pos, setPos] = useState({ top: 0, left: 0 })
   const ref = useRef<HTMLDivElement | null>(null)
   const toggle = (e: React.MouseEvent) => {
@@ -1091,6 +1100,7 @@ function ShadowsSection({ s }: { s: Shape }) {
       /** remount when it flips between empty/non-empty so defaultOpen picks the right state */
       key={shadows.length === 0 ? 'no-shadows' : 'has-shadows'}
       defaultOpen={shadows.length > 0}
+      onActivate={shadows.length ? undefined : (e) => pop.toggle(e)}
       addSlot={
         <div className="relative">
           <Hint label="Add shadow">
@@ -1229,8 +1239,7 @@ const FILTER_KINDS: Array<{
 ]
 
 /** Popover menu listing the filters the plus button can add. */
-function FilterAddMenu({ s }: { s: Shape }) {
-  const pop = usePopFixed()
+function FilterAddMenu({ s, pop }: { s: Shape; pop: PopFixed }) {
   const add = (k: (typeof FILTER_KINDS)[number]) => {
     setProps([s.id], { filters: { ...(s.filters ?? {}), [k.key]: k.def } }, `Add ${k.label.toLowerCase()}`)
     pop.setOpen(false)
@@ -1276,10 +1285,17 @@ function FilterAddMenu({ s }: { s: Shape }) {
 function FiltersSection({ s }: { s: Shape }) {
   const f = s.filters
   const has = f && FILTER_KINDS.some((k) => f[k.key] != null)
+  const pop = usePopFixed()
   const { live, end } = useLiveTx()
   const setF = (k: keyof Filters, v: number) => setProps([s.id], { filters: { ...f, [k]: v } }, 'Filter')
   return (
-    <Section title="Filters" addSlot={<FilterAddMenu s={s} />} open={!!has} defaultOpen>
+    <Section
+      title="Filters"
+      addSlot={<FilterAddMenu s={s} pop={pop} />}
+      open={!!has}
+      defaultOpen
+      onActivate={has ? undefined : (e) => pop.toggle(e)}
+    >
       {has &&
         FILTER_KINDS.filter((k) => f[k.key] != null).map((k) => (
           <div key={k.key} className="flex items-center gap-1.5">
@@ -1355,6 +1371,11 @@ function BorderSection({
       title={isLine ? 'Stroke' : 'Outline'}
       open={has}
       onAdd={
+        !has && !isLine
+          ? () => commit({ stroke: '#d9d9d9', strokeWidth: s.strokeWidth ?? 1 }, 'Add border')
+          : undefined
+      }
+      onActivate={
         !has && !isLine
           ? () => commit({ stroke: '#d9d9d9', strokeWidth: s.strokeWidth ?? 1 }, 'Add border')
           : undefined
@@ -1752,7 +1773,7 @@ export function PropertiesPanel() {
               />
             </Row>
           </Section>
-          <Section title="Export" addSlot={<ExportMenu />} />
+          <ExportSection />
           </PanelScroll>
         </aside>
       </TooltipProvider>
@@ -1762,6 +1783,32 @@ export function PropertiesPanel() {
   const s = shapes[0]
   const isLine = s.type === 'line'
   const commitProp = (patch: ShapePatch, label: string) => setProps([s.id], patch, label)
+
+  const fillEl =
+    (s.type === 'rect' || s.type === 'ellipse' || s.type === 'frame' || s.type === 'text') && (
+      <Section title="Fill">
+        <FillField s={s} />
+      </Section>
+    )
+  const shadowsEl =
+    (s.type === 'rect' || s.type === 'ellipse' || s.type === 'frame' || s.type === 'image' || s.type === 'text') && (
+      <ShadowsSection s={s} />
+    )
+  const filtersEl = <FiltersSection s={s} />
+  const borderEl = <BorderSection s={s} live={live} end={end} commit={commitProp} />
+  const textEl = (
+    <>
+      <TypographySection s={s} live={live} end={end} commit={commitProp} />
+      <Section
+        title="Text fill"
+        open={!!s.color}
+        onAdd={!s.color ? () => commitProp({ color: '#ececf1' }, 'Add text fill') : undefined}
+        onRemove={s.color ? () => commitProp({ color: undefined }, 'Remove text fill') : undefined}
+      >
+        <ColorField shapeId={s.id} field="color" txLabel="Text color" value={s.color} />
+      </Section>
+    </>
+  )
 
   return (
     <TooltipProvider>
@@ -1859,35 +1906,22 @@ export function PropertiesPanel() {
           )}
         </Section>
 
-        {(s.type === 'rect' || s.type === 'ellipse' || s.type === 'frame' || s.type === 'text') && (
-          <Section title="Fill">
-            <FillField s={s} />
-          </Section>
-        )}
-
-        {(s.type === 'rect' || s.type === 'ellipse' || s.type === 'frame' || s.type === 'image' || s.type === 'text') && (
+        {s.type === 'text' ? (
           <>
-            <ShadowsSection s={s} />
+            {/* sequence for text: appearance -> typography -> text fill -> fill -> shadow -> filters -> outline */}
+            {textEl}
+            {fillEl}
+            {shadowsEl}
+            {filtersEl}
+            {borderEl}
           </>
-        )}
-
-        <FiltersSection s={s} />
-
-        {s.type === 'frame' && <MarginSection s={s} />}
-
-        <BorderSection s={s} live={live} end={end} commit={commitProp} />
-
-        {s.type === 'text' && (
+        ) : (
           <>
-            <TypographySection s={s} live={live} end={end} commit={commitProp} />
-            <Section
-              title="Text fill"
-              open={!!s.color}
-              onAdd={!s.color ? () => commitProp({ color: '#ececf1' }, 'Add text fill') : undefined}
-              onRemove={s.color ? () => commitProp({ color: undefined }, 'Remove text fill') : undefined}
-            >
-              <ColorField shapeId={s.id} field="color" txLabel="Text color" value={s.color} />
-            </Section>
+            {fillEl}
+            {shadowsEl}
+            {filtersEl}
+            {s.type === 'frame' && <MarginSection s={s} />}
+            {borderEl}
           </>
         )}
 
@@ -1924,7 +1958,7 @@ export function PropertiesPanel() {
           </Section>
         )}
 
-        <Section title="Export" addSlot={<ExportMenu />} />
+        <ExportSection />
         </PanelScroll>
       </aside>
     </TooltipProvider>
@@ -1932,8 +1966,13 @@ export function PropertiesPanel() {
 }
 
 /** Export: a single dropdown listing every format, opened from the section header. */
-function ExportMenu() {
+/** Export section: clicking the row (or the "Export" chip) opens the format menu. */
+function ExportSection() {
   const pop = usePopFixed()
+  return <Section title="Export" addSlot={<ExportMenu pop={pop} />} onActivate={(e) => pop.toggle(e)} />
+}
+
+function ExportMenu({ pop }: { pop: PopFixed }) {
   const items: Array<[string, string, () => void]> = [
     ['PNG', '2× raster', () => void exportSelectionPNG(2)],
     ['JPG', '2× raster', () => void exportSelectionRaster('jpeg', 2)],
