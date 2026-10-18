@@ -6,8 +6,8 @@ import { pillLight } from '@/components/PageMenu'
 
 const easeOut = [0.22, 1, 0.36, 1] as const
 
-const ROLES = ['Storyboarder', 'Growth'] as const
-const ENGAGEMENT = ['Freelance', 'Full-time', 'Part-time'] as const
+const ROLES = ['Storyboarder', 'Growth', 'Open application'] as const
+const ENGAGEMENT = ['Contract', 'Full-time'] as const
 
 const fieldCls =
   'w-full rounded-md bg-[#2b2b2b] px-3 py-2.5 text-[13px] text-foreground placeholder:text-muted-foreground/50 outline-none transition-colors hover:border-border focus:border-ring border border-transparent cursor-text'
@@ -109,7 +109,7 @@ export default function Careers() {
           </div>
 
           <div className="flex flex-col gap-1.5 sm:w-1/2 sm:pr-2">
-            <span className="text-[12px] text-muted-foreground">Freelance or full-time</span>
+            <span className="text-[12px] text-muted-foreground">Contract or full-time</span>
             <label className="relative flex cursor-pointer items-center">
               <select value={f.engagement} onChange={set('engagement')} className={fieldCls + ' appearance-none pr-8 cursor-pointer'}>
                 {ENGAGEMENT.map((r) => (
