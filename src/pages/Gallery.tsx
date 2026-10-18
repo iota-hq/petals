@@ -27,8 +27,8 @@ export default function Gallery() {
   return (
     <InfoShell>
       <InfoTitle
-        title="Pieces drawn in Petals"
-        intro="Starter canvases from the team and the community — every one of these is pure Petals output."
+        title="Gallery"
+        intro="Starter canvases from the team and the community."
       />
 
       <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">

@@ -11,6 +11,7 @@ import { PropertiesPanel, ZoomCluster } from './PropertiesPanel'
 import { CanvasRoot } from './CanvasRoot'
 import { UndoRedoButtons } from './UndoRedoButtons'
 import { CanvasContextMenu } from './ContextMenu'
+import { SponsorBubble } from './SponsorBubble'
 import { Hint } from '@/components/ui/tooltip'
 
 export default function EditorPage({ projectId }: { projectId: string }) {
@@ -30,6 +31,7 @@ export default function EditorPage({ projectId }: { projectId: string }) {
   return (
     <div className="flex h-full min-h-0">
       {showLeft && <LeftPanel projectId={projectId} />}
+      <SponsorBubble />
       <main ref={mainRef} className="relative min-w-0 flex-1">
         <CanvasRoot />
         <Toolbar />

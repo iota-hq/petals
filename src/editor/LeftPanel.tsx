@@ -297,24 +297,24 @@ export function LeftPanel({ projectId }: { projectId: string }) {
         </section>
 
         {/* sponsors */}
-        <div className="shrink-0 border-t border-border px-3 pb-3 pt-3">
-          <a
-            href="https://contra.com/products/bfrEtU52-sponsor-petals"
-            target="_blank"
-            rel="noreferrer"
-            className="flex h-9 cursor-pointer items-center gap-2.5 rounded-2xl bg-accent px-3.5 text-[12px] text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <Plus size={13} className="shrink-0" />
-            <span className="truncate">Be the first Silver sponsor</span>
-          </a>
+        <div className="flex shrink-0 items-center gap-1.5 border-t border-border px-3 py-3">
           <a
             href="https://useiota.space/?ref=petals&utm_source=petals&utm_medium=referral&utm_campaign=editor-sidebar"
             target="_blank"
             rel="noreferrer"
             aria-label="iota"
-            className="mt-2.5 flex size-9 cursor-pointer items-center justify-center overflow-hidden rounded-xl transition-transform duration-150 hover:scale-105"
+            className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-[10px] bg-[#2B2B2B] transition-transform duration-150 hover:scale-105"
           >
-            <img src="/iota-hq-sponsor.png" alt="iota" className="size-9 rounded-xl" draggable={false} />
+            <img src="/iota-hq-sponsor.png" alt="iota" className="size-7 rounded-md" draggable={false} />
+          </a>
+          <a
+            href="https://contra.com/products/bfrEtU52-sponsor-petals"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Become a sponsor"
+            className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-[10px] bg-[#2B2B2B] text-[#9A9AA4] transition-colors hover:text-foreground"
+          >
+            <Plus size={15} />
           </a>
         </div>
       </aside>
