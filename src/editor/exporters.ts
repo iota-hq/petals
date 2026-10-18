@@ -1034,6 +1034,13 @@ function pascalName(v: string | undefined): string {
 }
 
 const r1 = (v: number) => Math.round(v * 100) / 100
+/** design-tool px are noisy; exported CSS should be whole pixels */
+const px = (v: number) => Math.round(v)
+/** standard Tailwind names exactly matching the v4 radius scale; arbitrary px otherwise */
+function radiusClass(r: number): string | null {
+  const m: Record<number, string> = { 2: 'rounded-xs', 4: 'rounded-sm', 6: 'rounded-md', 8: 'rounded-lg', 12: 'rounded-xl', 16: 'rounded-2xl', 24: 'rounded-3xl' }
+  return m[Math.round(r)] ?? null
+}
 
 /** Node + Tailwind builders produce "class list" plus extra inline style entries. */
 function tailwindFillClass(fill: Shape['fill']): string | null {
@@ -1059,31 +1066,66 @@ function codeBoxShadow(s: Shape): string | null {
   return parts.length ? `boxShadow: '${parts.join(', ').replace(/'/g, "\\'")}'` : null
 }
 
-/** Emit JSX for one shape; ret = lines pushed with `ind` as base indentation. */
-function codeEmit(nodes: Record<string, Shape>, s: Shape, ox: number, oy: number, ind: string, lines: string[]) {
+/** An image the zip export will ship as a real file (`import image1 from ...`). */
+type CodeAsset = { imp: string; file: string }
+
+/**
+ * Emit JSX for one shape; ret = lines pushed with `ind` as base indentation.
+ * `ox/oy` is the container origin in page space, `flow` set when the shape is
+ * a flex item inside an auto-layout frame (then absolute + offsets are gone),
+ * `standalone` for a single-shape export (no positioning at all).
+ */
+function codeEmit(
+  nodes: Record<string, Shape>,
+  s: Shape,
+  ox: number,
+  oy: number,
+  ind: string,
+  lines: string[],
+  assets?: Map<string, CodeAsset>,
+  flow?: 'v' | 'h',
+  standalone?: boolean,
+) {
   if (!s.visible || s.opacity === 0) return
-  const cls: string[] = ['absolute']
+  const cls: string[] = []
   const css: string[] = []
+  const left = px(ox + s.x)
+  const top = px(oy + s.y)
 
   // geometry: local coordinates after the container origin (ox/oy is page-space)
   if (s.type === 'line') {
     const e = lineEnds(s)
     const len = Math.hypot(e.x2 - e.x1, e.y2 - e.y1) || 1
     const angle = (Math.atan2(e.y2 - e.y1, e.x2 - e.x1) * 180) / Math.PI
-    cls.push(`left-[${r1(ox + e.x1)}px]`, `top-[${r1(oy + e.y1)}px]`)
-    cls.push(`h-[${r1(s.strokeWidth ?? 2)}px]`, `w-[${r1(len)}px]`, 'transform-gpu', 'origin-left')
-    cls.push(`rounded-full`)
-    if (angle) cls.push(`rotate-[${r1(angle)}deg]`)
+    cls.push('absolute')
+    if (left) cls.push(`left-[${left}px]`)
+    if (top) cls.push(`top-[${top}px]`)
+    cls.push(`h-[${px(s.strokeWidth ?? 2)}px]`, `w-[${px(len)}px]`, 'transform-gpu', 'origin-left')
+    cls.push('rounded-full')
+    if (angle) cls.push(`rotate-[${px(angle)}deg]`)
     if (s.stroke) cls.push(`bg-[${s.stroke.toLowerCase()}]`)
+  } else if (!flow) {
+    if (!standalone) cls.push('absolute')
+    if (!standalone) {
+      // dropped when 0: an absolutely positioned element starts at the container origin
+      if (left) cls.push(`left-[${left}px]`)
+      if (top) cls.push(`top-[${top}px]`)
+    }
+    cls.push(`w-[${px(s.w)}px]`, `h-[${px(s.h)}px]`)
   } else {
-    cls.push(`left-[${r1(ox + s.x)}px]`, `top-[${r1(oy + s.y)}px]`, `w-[${r1(s.w)}px]`, `h-[${r1(s.h)}px]`)
+    cls.push(`w-[${px(s.w)}px]`, `h-[${px(s.h)}px]`)
+  }
+  if (s.type !== 'line') {
     const radii = cornersOf(s)
     const uniform = radii.every((v) => Math.abs(v - radii[0]) < 1e-6)
     if (uniform) {
-      if (radii[0] > 0) cls.push(s.type === 'ellipse' ? 'rounded-full' : `rounded-[${r1(radii[0])}px]`)
+      if (radii[0] > 0) {
+        const rCls = radiusClass(radii[0])
+        cls.push(s.type === 'ellipse' ? 'rounded-full' : (rCls ?? `rounded-[${px(radii[0])}px]`))
+      } else if (s.type === 'ellipse') cls.push('rounded-full')
     } else {
       css.push(
-        `borderRadius: '${r1(radii[0])}px ${r1(radii[1])}px ${r1(radii[2])}px ${r1(radii[3])}px'`,
+        `borderRadius: '${px(radii[0])}px ${px(radii[1])}px ${px(radii[2])}px ${px(radii[3])}px'`,
       )
     }
     const solid = tailwindFillClass(s.fill)
@@ -1092,12 +1134,12 @@ function codeEmit(nodes: Record<string, Shape>, s: Shape, ox: number, oy: number
       const grad = tailwindGradientStyle(s.fill)
       if (grad) css.push(grad)
     }
-    if (s.rotation) cls.push(`rotate-[${r1(s.rotation)}deg]`)
+    if (s.rotation) cls.push(`rotate-[${px(s.rotation)}deg]`)
     if (s.flipX || s.flipY) {
       const sx = s.flipX ? -1 : 1
       const sy = s.flipY ? -1 : 1
       const scale = sx === sy ? `${sx}` : `${sx}, ${sy}`
-      css.push('transform: ' + (s.rotation ? `'scale(${scale}) rotate(${r1(s.rotation)}deg)'` : `'scale(${scale})'`))
+      css.push('transform: ' + (s.rotation ? `'scale(${scale}) rotate(${px(s.rotation)}deg)'` : `'scale(${scale})'`))
     }
   }
   if (s.opacity < 1) css.push(`opacity: ${r1(s.opacity)}`)
@@ -1107,17 +1149,48 @@ function codeEmit(nodes: Record<string, Shape>, s: Shape, ox: number, oy: number
     const f = filtersToCss(s.filters)
     if (f) css.push(`filter: '${f.replace(/'/g, "\\'")}'`)
   }
-  if (s.stroke && s.type !== 'line') css.push(`border: '${r1(s.strokeWidth ?? 1)}px solid ${s.stroke}'`)
+  if (s.stroke && s.type !== 'line') css.push(`border: '${px(s.strokeWidth ?? 1)}px solid ${s.stroke}'`)
 
   const styleAttr = css.length ? ` style={{ ${css.join(', ')} }}` : ''
-  const open = (tag: string, extra = '') => `${ind}<${tag} className="${cls.join(' ')}"${extra}${styleAttr}`
+  const open = (tag: string, extra = '') => {
+    const ca = cls.length ? ` className="${cls.join(' ')}"` : ''
+    return `${ind}<${tag}${ca}${extra}${styleAttr}`
+  }
 
   if (s.type === 'frame') {
+    cls.push('relative')
     if (s.clip) cls.push('overflow-hidden')
+    if (s.layoutFlow) {
+      cls.push('flex', s.layoutFlow === 'v' ? 'flex-col' : 'flex-row')
+      const main = s.layoutMain === 1 ? 'justify-center' : s.layoutMain === 2 ? 'justify-end' : 'justify-start'
+      const cross = s.layoutCross === 1 ? 'items-center' : s.layoutCross === 2 ? 'items-end' : 'items-start'
+      cls.push(main, cross)
+      if (s.gap) cls.push(`gap-[${px(s.gap)}px]`)
+    }
+    const m = s.margin
+    if (m) {
+      const vals = [m.t, m.r, m.b, m.l]
+      if (vals.every((v) => v > 0 && v === vals[0])) cls.push(`p-[${px(vals[0])}px]`)
+      else {
+        if (m.t > 0) cls.push(`pt-[${px(m.t)}px]`)
+        if (m.r > 0) cls.push(`pr-[${px(m.r)}px]`)
+        if (m.b > 0) cls.push(`pb-[${px(m.b)}px]`)
+        if (m.l > 0) cls.push(`pl-[${px(m.l)}px]`)
+      }
+    }
     const kids: string[] = []
     for (const c of childrenSortedOf(nodes, s.id)) {
-      // children coordinates live in the frame's margin-inset content box
-      codeEmit(nodes, c, ox + s.x + (s.margin?.l ?? 0), oy + s.y + (s.margin?.t ?? 0), ind + '  ', kids)
+      // free children live in the frame's margin-inset content box; flex children don't need coords
+      codeEmit(
+        nodes,
+        c,
+        s.layoutFlow ? ox + s.x : ox + s.x + (m?.l ?? 0),
+        s.layoutFlow ? oy + s.y : oy + s.y + (m?.t ?? 0),
+        ind + '  ',
+        kids,
+        assets,
+        (s.layoutFlow ?? undefined) as 'v' | 'h' | undefined,
+      )
     }
     if (!kids.length) {
       lines.push(`${open('div')} />`)
@@ -1132,35 +1205,36 @@ function codeEmit(nodes: Record<string, Shape>, s: Shape, ox: number, oy: number
   if (s.type === 'image') {
     const fit = (s.fit ?? 'cover') === 'contain' ? 'object-contain' : 'object-cover'
     const all = cls.concat([fit])
-    lines.push(`${ind}<img className="${all.join(' ')}"${styleAttr} src="${(s.src ?? '').replace(/"/g, '&quot;')}" />`)
+    const asset = assets ? assets.get(s.src ?? '') : undefined
+    const srcAttr = asset ? `{${asset.imp}}` : `"${(s.src ?? '').replace(/"/g, '&quot;')}"`
+    lines.push(`${ind}<img${all.length ? ` className="${all.join(' ')}"` : ''}${styleAttr} src=${srcAttr} />`)
     return lines
   }
   if (s.type === 'text') {
     const fontSize = s.fontSize ?? 24
-    css.push(`fontSize: '${r1(fontSize)}px'`, `fontWeight: ${s.fontWeight ?? 500}`)
+    css.push(`fontSize: '${px(fontSize)}px'`, `fontWeight: ${s.fontWeight ?? 500}`)
     if (s.color) css.push(`color: '${s.color}'`)
     if (s.lineHeight && s.lineHeight !== 1.4) css.push(`lineHeight: ${r1(s.lineHeight)}`)
-    if (s.letterSpacing) css.push(`letterSpacing: '${r1(s.letterSpacing)}px'`)
+    if (s.letterSpacing) css.push(`letterSpacing: '${px(s.letterSpacing)}px'`)
     if (s.align && s.align !== 'left') css.push(`textAlign: '${s.align}'`)
-    css.push(`fontFamily: '${CODE_FONT}'`)
+    css.push(`fontFamily: "${CODE_FONT.replace(/"/g, "'")}"`)
+    cls.push('whitespace-pre-wrap')
+    const cab = cls.length ? ` className="${cls.join(' ')}"` : ''
     const styleAttrText = ` style={{ ${css.join(', ')} }}`
-    lines.push(
-      `${ind}<div className="${cls.join(' ')} whitespace-pre-wrap"${styleAttrText}>{${JSON.stringify(s.text ?? '')}}</div>`,
-    )
+    lines.push(`${ind}<p${cab}${styleAttrText}>{${JSON.stringify(s.text ?? '')}}</p>`)
     return lines
   }
 
-  if (s.type === 'ellipse') {
-    lines.push(`${open('div')} />`)
-    return lines
-  }
-  // rect
   lines.push(`${open('div')} />`)
   return lines
 }
 
-/** React + Tailwind JSX for the current selection (frames as relative boxes, shapes as absolute children). */
-export function buildSelectionCode(): string | null {
+/**
+ * React + Tailwind JSX for the current selection (frames as relative boxes,
+ * shapes as absolute children). Auto-layout frames emit flex + gap + padding
+ * instead of absolute children. `assets` swaps image data URLs for imports.
+ */
+export function buildSelectionCode(assets?: Map<string, CodeAsset>): string | null {
   const snap = collectSelection()
   if (!snap) return null
   const { nodes, roots } = snap
@@ -1168,14 +1242,23 @@ export function buildSelectionCode(): string | null {
   const b = boundsOfRects(valid.map((s) => pageAABB(nodes, s)))
   if (!b || b.w <= 0 || b.h <= 0) return null
   const name = pascalName(nodes[roots[0]]?.name)
+  // a single root IS the exported component; a wrapper would be redundant
+  const standalone = roots.length === 1
 
-  const lines: string[] = []
-  lines.push('// Generated by Petals — paste into your React + Tailwind project.')
+  const lines: string[] = ['// Generated by Petals — paste into your React + Tailwind project.']
+  if (assets) {
+    for (const a of assets.values()) lines.push(`import ${a.imp} from './assets/${a.file}'`)
+    lines.push('')
+  }
   lines.push(`export default function ${name}() {`)
   lines.push('  return (')
-  lines.push(`    <div className="relative w-[${r1(b.w)}px] h-[${r1(b.h)}px]">`)
-  for (const root of roots) codeEmit(nodes, nodes[root], -b.x, -b.y, '      ', lines)
-  lines.push('    </div>')
+  if (standalone) {
+    codeEmit(nodes, nodes[roots[0]], 0, 0, '    ', lines, assets, undefined, true)
+  } else {
+    lines.push(`    <div className="relative w-[${px(b.w)}px] h-[${px(b.h)}px]">`)
+    for (const root of roots) codeEmit(nodes, nodes[root], -b.x, -b.y, '      ', lines, assets)
+    lines.push('    </div>')
+  }
   lines.push('  )')
   lines.push('}')
   return lines.join('\n') + '\n'
@@ -1211,13 +1294,29 @@ export async function copySelectionSVG(): Promise<void> {
   }
 }
 
-/** Download the React + Tailwind JSX of the selection as a .tsx file. */
-export function downloadSelectionCode(): void {
-  const code = buildSelectionCode()
-  if (!code) return
+/** Download the selection as a zip: Component.tsx + real image files under assets/. */
+export async function exportSelectionCodeZip(): Promise<void> {
   const snap = collectSelection()
-  const name = sanitizeName(snap?.nodes[snap.roots[0]]?.name, 'petals-export')
-  download(new Blob([code], { type: 'text/plain' }), `${name}.tsx`)
+  if (!snap) return
+  const assets: Map<string, CodeAsset> = new Map()
+  const files: Array<{ name: string; data: Uint8Array }> = []
+  const seen = new Set<string>()
+  let n = 0
+  for (const s of flatSelection(snap)) {
+    if (s.type !== 'image' || !s.src || seen.has(s.src)) continue
+    seen.add(s.src)
+    const bytes = await imageFileBytes(s.src)
+    if (!bytes) continue
+    n++
+    const file = `image-${n}.${extFromSrc(s.src)}`
+    assets.set(s.src, { imp: `image${n}`, file })
+    files.push({ name: 'assets/' + file, data: bytes })
+  }
+  const code = buildSelectionCode(assets)
+  if (!code) return
+  files.unshift({ name: 'Component.tsx', data: new TextEncoder().encode(code) })
+  const name = sanitizeName(snap.nodes[snap.roots[0]]?.name, 'petals-export')
+  download(buildZipArchive(files), `${name}.zip`)
 }
 
 /** Copy the React + Tailwind JSX of the selection to the system clipboard (falls back to download). */
@@ -1228,5 +1327,104 @@ export async function copySelectionCode(): Promise<void> {
     await navigator.clipboard.writeText(code)
   } catch {
     download(new Blob([code], { type: 'text/plain' }), 'petals-export.tsx')
+  }
+}
+
+/* --------------------------------- zip --------------------------------- */
+
+let ZIP_CRC_TABLE: Uint32Array | null = null
+function zipCrc(data: Uint8Array): number {
+  if (!ZIP_CRC_TABLE) {
+    const t = new Uint32Array(256)
+    for (let i = 0; i < 256; i++) {
+      let c = i
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+      t[i] = c >>> 0
+    }
+    ZIP_CRC_TABLE = t
+  }
+  let crc = ~0
+  for (let i = 0; i < data.length; i++) crc = (crc >>> 8) ^ ZIP_CRC_TABLE[(crc ^ data[i]) & 0xff]
+  return ~crc >>> 0
+}
+
+/** Minimal STORE-method zip (no compression) so exports carry real image files. */
+function buildZipArchive(files: Array<{ name: string; data: Uint8Array }>): Blob {
+  const time = 0x4800 // fixed DOS timestamp so builds are reproducible
+  const date = 0x5821
+  const enc = new TextEncoder()
+  const local: Uint8Array[] = []
+  const central: Uint8Array[] = []
+  let offset = 0
+  for (const f of files) {
+    const name = enc.encode(f.name)
+    const size = f.data.length
+    const crc = zipCrc(f.data)
+    const hdr = new Uint8Array(30 + name.length)
+    const v = new DataView(hdr.buffer)
+    v.setUint32(0, 0x04034b50, true)
+    v.setUint16(4, 20, true) // zip version
+    v.setUint16(6, 0x0800, true) // UTF-8 names
+    v.setUint16(8, 0, true) // STORE
+    v.setUint16(10, time, true)
+    v.setUint16(12, date, true)
+    v.setUint32(14, crc, true)
+    v.setUint32(18, size, true)
+    v.setUint32(22, size, true)
+    v.setUint16(26, name.length, true)
+    hdr.set(name, 30)
+    local.push(hdr, f.data)
+    const c = new Uint8Array(46 + name.length)
+    const cv = new DataView(c.buffer)
+    cv.setUint32(0, 0x02014b50, true)
+    cv.setUint16(4, 20, true)
+    cv.setUint16(6, 20, true)
+    cv.setUint16(8, 0x0800, true)
+    cv.setUint16(10, 0, true)
+    cv.setUint16(12, time, true)
+    cv.setUint16(14, date, true)
+    cv.setUint32(16, crc, true)
+    cv.setUint32(20, size, true)
+    cv.setUint32(24, size, true)
+    cv.setUint16(28, name.length, true)
+    cv.setUint32(42, offset, true)
+    c.set(name, 46)
+    central.push(c)
+    offset += hdr.length + size
+  }
+  const cSize = central.reduce((a, c) => a + c.length, 0)
+  const end = new Uint8Array(22)
+  const ev = new DataView(end.buffer)
+  ev.setUint32(0, 0x06054b50, true)
+  ev.setUint16(8, files.length, true)
+  ev.setUint16(10, files.length, true)
+  ev.setUint32(12, cSize, true)
+  ev.setUint32(16, offset, true)
+  return new Blob([...local, ...central, end] as BlobPart[], { type: 'application/zip' })
+}
+
+function extFromSrc(src: string): string {
+  const m = /^data:image\/([\w.+-]+)[;,]/.exec(src)
+  const kind = m?.[1] ?? 'png'
+  if (kind === 'jpeg') return 'jpg'
+  if (kind === 'svg+xml') return 'svg'
+  return kind.split('.')[0] || 'png'
+}
+
+/** Image source → raw file bytes: base64 for data URLs, fetch for the rest. */
+async function imageFileBytes(src: string): Promise<Uint8Array | null> {
+  try {
+    if (src.startsWith('data:')) {
+      const b64 = src.slice(src.indexOf(',') + 1)
+      const bin = atob(b64)
+      const out = new Uint8Array(bin.length)
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
+      return out
+    }
+    const r = await fetch(src)
+    if (!r.ok) return null
+    return new Uint8Array(await r.arrayBuffer())
+  } catch {
+    return null
   }
 }

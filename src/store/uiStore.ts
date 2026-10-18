@@ -113,6 +113,7 @@ export const useUi = create<UiState>((set) => ({
   setDockZones: (dockZones) => set({ dockZones }),
   setCamera: (camera) => set({ camera }),
   setSelection: (selection) => set({ selection, editingText: null }),
+
   toggleSelection: (id) =>
     set((s) => ({
       selection: s.selection.includes(id) ? s.selection.filter((i) => i !== id) : [...s.selection, id],
@@ -161,3 +162,4 @@ export function setZoomAroundCenter(zoom: number, rect: DOMRect) {
   const pageY = (cpy - camera.y) / camera.zoom
   setCamera({ x: cpx - pageX * zoom, y: cpy - pageY * zoom, zoom })
 }
+

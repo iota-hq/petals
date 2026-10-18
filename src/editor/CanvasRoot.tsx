@@ -27,10 +27,34 @@ import { World } from './World'
 import { SelectionOverlay } from './SelectionOverlay'
 import { HoverMeasure } from './HoverMeasure'
 
+/**
+ * Ancestor [data-node-id] chain under a pointer, outermost→innermost.
+ * NodeView nests children inside their parent's DOM, so the browser hit-test
+ * returns the deepest node and this rebuilds the full stack above it.
+ * Locked and hidden shapes drop out of the chain.
+ */
+const shapeChainUp = (el: HTMLElement, nodes: ReturnType<typeof useDoc.getState>['nodes']) => {
+  const chain: string[] = []
+  let cur: HTMLElement | null = el
+  while (cur) {
+    const nid = cur.getAttribute('data-node-id')
+    if (nid) chain.push(nid)
+    cur = cur.parentElement
+    if (cur?.hasAttribute('data-canvas-root')) break
+  }
+  chain.reverse()
+  return chain.filter((id) => {
+    const s = nodes[id]
+    return s && s.visible && !s.locked
+  })
+}
+
 export function CanvasRoot() {
   const rootRef = useRef<HTMLDivElement>(null)
   const worldRef = useRef<HTMLDivElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
+  // progressive selection: which shape stack we're drilling into and how deep
+  const drillRef = useRef<{ key: string; level: number; lastAt: number; lastText: string | null }>({ key: '', level: 0, lastAt: -1e9, lastText: null })
   const tool = useUi((s) => s.tool)
   const space = useUi((s) => s.space)
   const empty = useDoc((s) => Object.keys(s.nodes).length === 0)
@@ -229,25 +253,75 @@ export function CanvasRoot() {
     }
 
     // ---- select tool ----
-    const nodeEl = (e.target as HTMLElement).closest('[data-node-id]')
-    const nid = nodeEl?.getAttribute('data-node-id') ?? null
-    const node = nid ? doc.nodes[nid] : undefined
-    if (!node || !node.visible || node.locked) {
+    // progressive drill-down: a plain click picks the outermost shape under the
+    // pointer; repeated double-clicks on the same stack dig one level deeper
+    const nodeEl = (e.target as HTMLElement).closest('[data-node-id]') as HTMLElement | null
+    const chain = nodeEl ? shapeChainUp(nodeEl, doc.nodes) : []
+    if (!chain.length) {
       e.preventDefault()
+      drillRef.current = { key: '', level: 0, lastAt: -1e9, lastText: null }
       ui.setGesture({ kind: 'marquee', start: p, point: p, additive: e.shiftKey })
       if (!e.shiftKey) ui.clearSelection()
       return
     }
-    const selNow = useUi.getState().selection
+    const d = drillRef.current
+    const key = chain.join('>')
+    // pointerdown carries no click count in Chromium (detail is always 0), so
+    // "is this press part of a double-click?" is judged by our own clock: a
+    // pause > 400 ms or a different stack restarts the drill at the outermost
+    const now = performance.now()
+    const changed = key !== d.key
+    if (changed || now - d.lastAt > 400) {
+      d.key = key
+      d.level = 0
+      // lastText survives a pause: double-clicking text, waiting, then
+      // double-clicking again is still the "select text, then edit" flow
+      if (changed) d.lastText = null
+    }
+    d.lastAt = now
+    const pickId = chain[Math.min(d.level, chain.length - 1)]
     if (e.shiftKey) {
-      ui.toggleSelection(node.id)
+      ui.toggleSelection(pickId)
       return
     }
-    if (!selNow.includes(node.id)) {
-      useUi.setState({ selection: [node.id] })
+    const selNow = useUi.getState().selection
+    if (!selNow.includes(pickId)) {
+      useUi.setState({ selection: [pickId] })
     }
     e.preventDefault()
     beginMove(useUi.getState().selection, p, e.altKey)
+  }
+
+  // double-click drills one level inside the stack. On a text node the first
+  // double-click only selects it; the next double-click enters inline editing.
+  const onDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const ui = useUi.getState()
+    if (ui.tool !== 'select' || ui.editingText) return
+    const doc = useDoc.getState()
+    const nodeEl = (e.target as HTMLElement).closest('[data-node-id]') as HTMLElement | null
+    const chain = nodeEl ? shapeChainUp(nodeEl, doc.nodes) : []
+    if (!chain.length) return
+    e.preventDefault()
+    const d = drillRef.current
+    if (chain.join('>') !== d.key) {
+      d.key = chain.join('>')
+      d.level = 0
+    }
+    d.level = Math.min(d.level + 1, chain.length - 1)
+    const pick = doc.nodes[chain[d.level]]
+    if (!pick) return
+    if (pick.type === 'text') {
+      if (d.lastText === pick.id) {
+        d.lastText = null
+        useUi.setState({ selection: [pick.id], tool: 'select', gesture: null, editingText: pick.id })
+      } else {
+        d.lastText = pick.id
+        useUi.setState({ selection: [pick.id] })
+      }
+    } else {
+      d.lastText = null
+      useUi.setState({ selection: [pick.id] })
+    }
   }
 
   const cursorValue =
@@ -269,6 +343,7 @@ export function CanvasRoot() {
         ref={rootRef}
         style={{ background: canvasBg, cursor: cursorValue, touchAction: 'none' } as React.CSSProperties}
         onPointerDown={onPointerDown}
+        onDoubleClick={onDoubleClick}
         onDragOver={(e) => e.preventDefault()}
         onDrop={onDrop}
       >

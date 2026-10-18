@@ -35,8 +35,8 @@ import { fillToCss, radiusToCss } from '@/model/styles'
 import { useDoc, type Tx } from '@/store/docStore'
 import { useUi, DEFAULT_CANVAS_BG, setZoomAroundCenter } from '@/store/uiStore'
 import { fileToImageSrc, addImageFile, alignSelection, canvasEl, nudge, setProps, type AlignEdge } from './commands'
-import { downloadSelectionCode, exportSelectionEPS, exportSelectionPNG, exportSelectionRaster, exportSelectionSVG } from './exporters'
-import { IconBlur, IconBrightness, IconBoxShadow, IconContrast, IconConic, IconGradientFill, IconGrayscale, IconHue, IconImageFill, IconInnerShadow, IconInvert, IconLinear, IconLetterSpacing, IconMargin, IconOpacity, IconRadial, IconRadius, IconRotate, IconSepia, IconSaturate, IconSolidFill, IconSpread, IconFontSize, IconLineHeight, IconStrokeWidth } from './proIcons'
+import { exportSelectionCodeZip, exportSelectionEPS, exportSelectionPNG, exportSelectionRaster, exportSelectionSVG } from './exporters'
+import { IconBlur, IconBrightness, IconBoxShadow, IconContrast, IconConic, IconFlowFree, IconFlowH, IconFlowV, IconGap, IconGradientFill, IconGrayscale, IconHue, IconImageFill, IconInnerShadow, IconInvert, IconLinear, IconLetterSpacing, IconMargin, IconOpacity, IconRadial, IconRadius, IconRotate, IconSepia, IconSaturate, IconSolidFill, IconSpread, IconFontSize, IconLineHeight, IconStrokeWidth } from './proIcons'
 import { FontPicker, useGoogleFonts, type FontEntry } from './FontPicker'
 import { UndoRedoButtons } from './UndoRedoButtons'
 import { Button } from '@/components/ui/button'
@@ -114,6 +114,8 @@ function Section({
   const rowClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button')) return
     rowActivate(e)
+    // the section-level fallback only handles clicks that miss the header row
+    e.stopPropagation()
   }
 
   let indicator: ReactNode = null
@@ -148,8 +150,12 @@ function Section({
   }
 
   return (
-    <section className={(open ? 'px-3.5 py-3' : 'px-3.5 py-2') + ' border-b border-border'}>
-      <div className="flex min-h-5 items-center justify-between gap-1" onClick={rowClick} onMouseDown={(e) => e.preventDefault()}>
+    <section
+      className={(open ? 'px-3.5 py-3' : 'px-3.5 py-2') + ' border-b border-border' + (open ? '' : ' cursor-pointer')}
+      /** closed sections activate from anywhere on their block, not just the title line */
+      onClick={!open ? rowClick : undefined}
+    >
+      <div className="flex min-h-5 items-center justify-between gap-1 cursor-pointer" onClick={rowClick} onMouseDown={(e) => e.preventDefault()}>
         <button
           onClick={rowActivate}
           className="flex min-w-0 cursor-pointer items-baseline gap-1.5 text-left"
@@ -1333,6 +1339,101 @@ function FiltersSection({ s }: { s: Shape }) {
   )
 }
 
+/** 3x3 alignment dots: rows pick the cross side, columns the flow side. */
+function AlignGrid({ main, cross, onMain, onCross }: { main: 0 | 1 | 2; cross: 0 | 1 | 2; onMain: (v: 0 | 1 | 2) => void; onCross: (v: 0 | 1 | 2) => void }) {
+  const cell = (r: 0 | 1 | 2, c: 0 | 1 | 2) => {
+    const active = r === cross && c === main
+    return (
+      <button
+        key={`${r}-${c}`}
+        onClick={() => {
+          onCross(r)
+          onMain(c)
+        }}
+        aria-label={`Align ${['Start', 'Center', 'End'][r]} / ${['Start', 'Center', 'End'][c]}`}
+        className="group flex size-6 cursor-pointer items-center justify-center rounded-md"
+      >
+        <span className={active ? 'size-2 rounded-full bg-primary' : 'size-1 rounded-full bg-muted-foreground/50 group-hover:bg-foreground/80'} />
+      </button>
+    )
+  }
+  return (
+    <div className="grid grid-cols-3 gap-0 rounded-md px-1 py-1" style={{ background: '#2b2b2b' }}>
+      {([0, 1, 2] as const).map((r) => ([0, 1, 2] as const).map((c) => cell(r, c)))}
+    </div>
+  )
+}
+
+/** Flow picker segmented: free frame / vertical stack / horizontal row. */
+function FlowPick({ value, onChange }: { value: 'v' | 'h' | undefined; onChange: (v: 'v' | 'h' | undefined) => void }) {
+  const btn = (v: 'v' | 'h' | undefined, label: string, Icon: typeof IconFlowFree) => (
+    <Hint label={label}>
+      <button
+        onClick={() => onChange(v)}
+        className={
+          'flex h-7 flex-1 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:text-foreground ' +
+          (value === v ? 'bg-[#353535] text-foreground' : '')
+        }
+        aria-label={label}
+      >
+        <Icon size={14} />
+      </button>
+    </Hint>
+  )
+  return (
+    <div className="flex w-full items-center gap-0.5 rounded-md p-0.5" style={{ background: '#262626' }}>
+      {btn(undefined, 'Free', IconFlowFree)}
+      {btn('v', 'Vertical flow', IconFlowV)}
+      {btn('h', 'Horizontal flow', IconFlowH)}
+    </div>
+  )
+}
+
+/** Frame layout: free positioning or auto-flow children, with gap + alignment. */
+function LayoutSection({ s }: { s: Shape }) {
+  const flow = s.layoutFlow
+  const main: 0 | 1 | 2 = s.layoutMain ?? 0
+  const cross: 0 | 1 | 2 = s.layoutCross ?? 0
+  const { live, end } = useLiveTx()
+  const setLow = (patch: ShapePatch, label: string) => setProps([s.id], patch, label)
+  return (
+    <Section title="Layout">
+      <Row>
+        <FlowPick
+          value={flow}
+          onChange={(v) => {
+            end()
+            if (v) setLow({ layoutFlow: v, gap: s.gap ?? 0, layoutMain: s.layoutMain, layoutCross: s.layoutCross }, `${v === 'v' ? 'Vertical' : 'Horizontal'} flow`)
+            else setLow({ layoutFlow: undefined, gap: undefined, layoutMain: undefined, layoutCross: undefined }, 'Free placement')
+          }}
+        />
+      </Row>
+      {flow && (
+        <>
+          <Row>
+            <NumField
+              icon={<IconGap />}
+              min={0}
+              value={s.gap ?? 0}
+              onLive={(v) => live(s.id, { gap: Math.max(0, v) }, 'Gap')}
+              onEnd={end}
+              onCommit={(v) => setLow({ gap: Math.max(0, v) }, 'Gap')}
+            />
+          </Row>
+          <Row>
+            <AlignGrid
+              main={main}
+              cross={cross}
+              onMain={(v) => setLow({ layoutMain: v }, 'Distribution')}
+              onCross={(v) => setLow({ layoutCross: v }, 'Alignment')}
+            />
+          </Row>
+        </>
+      )}
+    </Section>
+  )
+}
+
 function MarginSection({ s }: { s: Shape }) {
   const m = s.margin ?? { t: 0, r: 0, b: 0, l: 0 }
   const { live, end } = useLiveTx()
@@ -1546,17 +1647,26 @@ function RadiusField({
   const setCornerLive = (c: 'tl' | 'tr' | 'br' | 'bl') => (v: number) =>
     live(s.id, { radius: 0, radii: { tl: val('tl'), tr: val('tr'), br: val('br'), bl: val('bl'), [c]: Math.max(0, v) } as Shape['radii'] & Record<string, number> }, 'Corner radius')
 
-  /** The same throw-away-corner mark, flipped to point at each corner. */
+  /** Rounded-corner mark: dotted square with a solid arc at the active corner (flipped per corner). */
   const CornerIcon = ({ c }: { c: 'tl' | 'tr' | 'br' | 'bl' }) => (
-    <img
-      src="/TablerBorderRadius.png"
-      alt=""
-      className="size-4"
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      className="shrink-0 text-muted-foreground"
       style={{
         transform:
           c === 'tl' ? 'none' : c === 'tr' ? 'scaleX(-1)' : c === 'bl' ? 'scaleY(-1)' : 'scale(-1, -1)',
       }}
-    />
+      aria-hidden="true"
+    >
+      <rect x="4" y="4" width="16" height="16" rx="3" strokeDasharray="2.4 3" />
+      <path d="M4 12v-5a3 3 0 0 1 3-3h5" />
+    </svg>
   )
 
   return (
@@ -1920,6 +2030,7 @@ export function PropertiesPanel() {
             {fillEl}
             {shadowsEl}
             {filtersEl}
+            {s.type === 'frame' && <LayoutSection s={s} />}
             {s.type === 'frame' && <MarginSection s={s} />}
             {borderEl}
           </>
@@ -1981,17 +2092,19 @@ function ExportMenu({ pop }: { pop: PopFixed }) {
     ['SVG', 'Vector', () => void exportSelectionSVG()],
     ['EPS', 'Vector · PostScript', () => void exportSelectionEPS(false)],
     ['AI', 'Vector · Illustrator', () => void exportSelectionEPS(true)],
-    ['TSX', 'React + Tailwind code', () => downloadSelectionCode()],
+    ['TSX', 'React + Tailwind (zip)', () => void exportSelectionCodeZip()],
   ]
   return (
     <div className="relative">
-      <button
-        onClick={pop.toggle}
-        className="flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-foreground/85 hover:bg-accent hover:text-foreground"
-      >
-        Export
-        <ChevronDown size={11} />
-      </button>
+      <Hint label="Export">
+        <button
+          onClick={pop.toggle}
+          aria-label="Export"
+          className="flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
+        >
+          <Plus size={13} />
+        </button>
+      </Hint>
       {pop.open && (
         <div
           ref={pop.ref}

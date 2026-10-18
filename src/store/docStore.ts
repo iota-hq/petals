@@ -113,14 +113,60 @@ export const useDoc = create<DocStore>((set, get) => {
           if (!node.pageId) node.pageId = s.activePage
           else if (!s.pages.some((p) => p.id === node.pageId)) node.pageId = s.pages[0].id
         }
+        reflowFrames(s.nodes, s.activePage)
       }),
     )
     scheduleSave()
   }
 
   /** Dangling-parent guard after history edits. Runs inside produce — never writes frozen state. */
-  const sanitizeParents = () => {
-    const { nodes } = get()
+  /**
+   * Frame auto-layout: positions every child of a flow frame into the frame's
+   * margin box (padding) with the frame's gap and main/cross alignment.
+   * Runs right after any mutation; keeps x/y in the normal (parent-local) space
+   * so gestures, selection bounds and exports all see the laid-out geometry.
+   * Runs inside produce — never writes frozen state.
+   */
+  const reflowFrames = (nodes: Record<string, Shape>, activePage: string) => {
+    const flows = Object.values(nodes).filter((f) => f.type === 'frame' && f.layoutFlow && f.pageId === activePage)
+    if (!flows.length) return
+    for (const f of flows) {
+      const kids = Object.values(nodes)
+        .filter((k) => k.parentId === f.id && k.type !== 'line')
+        .sort((a, b) => a.order - b.order)
+      if (!kids.length) continue
+      const m = f.margin ?? { t: 0, r: 0, b: 0, l: 0 }
+      const g = Math.max(0, f.gap ?? 0)
+      const main = f.layoutMain === 1 ? 1 : f.layoutMain === 2 ? 2 : 0
+      const cross = f.layoutCross === 1 ? 1 : f.layoutCross === 2 ? 2 : 0
+      // child x/y are relative to the frame's margin-inset origin (offsetForParent),
+      // so the layout cursor runs 0..(inner) inside that box
+      const innerW = f.w - m.l - m.r
+      const innerH = f.h - m.t - m.b
+      if (innerW < 0 || innerH < 0) continue
+      if (f.layoutFlow === 'v') {
+        const total = kids.reduce((a, k) => a + k.h, 0) + g * Math.max(0, kids.length - 1)
+        let cursor = main === 0 ? 0 : main === 1 ? (innerH - total) / 2 : innerH - total
+        for (const k of kids) {
+          const x = cross === 0 ? 0 : cross === 1 ? (innerW - k.w) / 2 : innerW - k.w
+          if (Math.abs(k.x - x) > 0.01) k.x = x
+          if (Math.abs(k.y - cursor) > 0.01) k.y = cursor
+          cursor += k.h + g
+        }
+      } else {
+        const total = kids.reduce((a, k) => a + k.w, 0) + g * Math.max(0, kids.length - 1)
+        let cursor = main === 0 ? 0 : main === 1 ? (innerW - total) / 2 : innerW - total
+        for (const k of kids) {
+          const y = cross === 0 ? 0 : cross === 1 ? (innerH - k.h) / 2 : innerH - k.h
+          if (Math.abs(k.x - cursor) > 0.01) k.x = cursor
+          if (Math.abs(k.y - y) > 0.01) k.y = y
+          cursor += k.w + g
+        }
+      }
+    }
+  }
+
+  const sanitizeParents = () => {    const { nodes } = get()
     const dangling = Object.values(nodes)
       .filter((s) => {
         const pid = s.parentId

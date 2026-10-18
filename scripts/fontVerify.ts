@@ -57,18 +57,25 @@ ok((await section('Fill').count()) > 0, 'Fill section present for text')
 ok((await section('Shadow').count()) > 0, 'Shadow section present for text')
 
 console.log('— outline round-trip on text —')
-// the header row of the Outline section carries the Add (+) button; start collapsed
-await section('Outline').click()
-await page.waitForTimeout(250)
-const outlineRow = page.locator('aside div', { hasText: /^Outline\s*$/ }).last()
-await outlineRow.locator('button').last().click()
-await page.waitForTimeout(500)
+// addable sections activate from the whole row: one click on the row adds the border
 const hasStroke = await page.evaluate(() => {
   const raw = localStorage.getItem('petal.doc.v1.fonttest1')!
   const nodes = (JSON.parse(raw) as { nodes: Record<string, { type: string; stroke?: string }> }).nodes
   return Object.values(nodes).some((s) => s.type === 'text' && s.stroke)
 })
-ok(hasStroke, 'outline add writes stroke onto the text shape')
+if (!hasStroke) {
+  const outlineRow = page.locator('aside div', { hasText: /^Outline\s*$/ }).last()
+  await outlineRow.locator('button').last().click()
+  await page.waitForTimeout(500)
+}
+const strokeAfterAdd = await page.evaluate(() => {
+  const raw = localStorage.getItem('petal.doc.v1.fonttest1')!
+  const nodes = (JSON.parse(raw) as { nodes: Record<string, { type: string; stroke?: string }> }).nodes
+  return Object.values(nodes).map((s) => s.stroke).find(Boolean)
+})
+ok(!!strokeAfterAdd, 'outline row activation writes stroke onto the text shape')
+ok(strokeAfterAdd === '#d9d9d9', 'added stroke uses the border color token')
+
 await page.screenshot({ path: 'test-artifacts/text-panel.png' })
 
 console.log('— font picker —')

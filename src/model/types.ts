@@ -113,6 +113,12 @@ export interface Shape {
   filters?: Filters
   // frame content-box inset
   margin?: Margin
+  // frame auto-layout: children stick into a vertical/horizontal flow with spacing;
+  // undefined = free positioning. Main/cross are 0 start · 1 center · 2 end.
+  layoutFlow?: 'v' | 'h'
+  gap?: number
+  layoutMain?: 0 | 1 | 2
+  layoutCross?: 0 | 1 | 2
   // text
   text?: string
   fontSize?: number

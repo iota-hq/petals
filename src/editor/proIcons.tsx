@@ -347,3 +347,54 @@ export function IconPage(p: P) {
     p,
   )
 }
+
+/** Auto-layout flow: free positioning frame (two overlapping surfaces). */
+export function IconFlowFree(p: P) {
+  return svg(
+    '0 0 24 24',
+    <g fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
+      <rect x="3.5" y="3.5" width="10" height="10" rx="2.5" />
+      <rect x="10.5" y="10.5" width="10" height="10" rx="2.5" />
+    </g>,
+    p,
+  )
+}
+
+/** Auto-layout flow: children stacked vertically (three bars). */
+export function IconFlowV(p: P) {
+  return svg(
+    '0 0 24 24',
+    <g fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
+      <rect x="4" y="3.5" width="16" height="4.6" rx="1.6" />
+      <rect x="4" y="9.7" width="16" height="4.6" rx="1.6" />
+      <rect x="4" y="15.9" width="16" height="4.6" rx="1.6" />
+    </g>,
+    p,
+  )
+}
+
+/** Auto-layout flow: children laid side by side (three columns). */
+export function IconFlowH(p: P) {
+  return svg(
+    '0 0 24 24',
+    <g fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
+      <rect x="3.5" y="4" width="4.6" height="16" rx="1.6" />
+      <rect x="9.7" y="4" width="4.6" height="16" rx="1.6" />
+      <rect x="15.9" y="4" width="4.6" height="16" rx="1.6" />
+    </g>,
+    p,
+  )
+}
+
+/** Gap between flow children: two end rails with a spacing dash between. */
+export function IconGap(p: P) {
+  return svg(
+    '0 0 24 24',
+    <g fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+      <path d="M3.5 5v14" strokeDasharray="2.6 2.6" />
+      <path d="M20.5 5v14" strokeDasharray="2.6 2.6" />
+      <path d="M9 12h6" />
+    </g>,
+    p,
+  )
+}
