@@ -157,21 +157,18 @@ export function Toolbar() {
               <Redo2 size={15} />
             </button>
           </Hint>
-          <Hint label="Drag canvas to fill the screen" side="top">
-            <button
-              disabled={gesture != null}
-              aria-label="Drag canvas to fill the screen"
-              onClick={() => useUi.getState().setDockZones(!useUi.getState().dockZones)}
-              className={
-                'flex size-8 items-center justify-center rounded-lg transition-colors ' +
-                (dockZones
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-accent hover:text-foreground')
-              }
-            >
-              <IconDragCanvas size={15} />
-            </button>
-          </Hint>
+          {/* drag-to-fill is parked for now — desktop only, drawn inert */}
+          <div className="hidden lg:flex">
+            <Hint label="Drag canvas to fill the screen" side="top">
+              <button
+                disabled
+                aria-label="Drag canvas to fill the screen"
+                className="flex size-8 cursor-default items-center justify-center rounded-lg text-muted-foreground/40"
+              >
+                <IconDragCanvas size={15} />
+              </button>
+            </Hint>
+          </div>
         </div>
       </div>
     </TooltipProvider>
