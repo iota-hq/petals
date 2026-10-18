@@ -6,7 +6,7 @@ import { buttonVariants } from '@/components/ui/button'
 import { useProjects } from '@/store/projectsStore'
 import type { ProjectMeta } from '@/store/projectsStore'
 import { cn } from '@/lib/utils'
-import { PageMenu, pillDark, pillLight, FlowerLogo } from '@/components/PageMenu'
+import { PageMenu, pillDark, pillLight, FlowerLogo, LoginPill } from '@/components/PageMenu'
 
 /** ease used by every entrance in the app — quick start, soft landing */
 const easeOut = [0.22, 1, 0.36, 1] as const
@@ -42,13 +42,7 @@ export default function Dashboard() {
           <span className="text-[13px] font-semibold tracking-tight">Petals</span>
         </button>
         <div className="flex items-center gap-3">
-          <button
-            onClick={(e) => e.preventDefault()}
-            className={pillDark}
-            aria-label="Log in (coming soon)"
-          >
-            Log in
-          </button>
+          <LoginPill />
           <button onClick={newProject} className={sorted.length === 0 ? pillDark : pillLight}>
             <Plus size={14} />
             New project

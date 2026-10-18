@@ -41,7 +41,7 @@ export default function EditorPage({ projectId }: { projectId: string }) {
           </div>
         )}
         {!showLeft && (
-          <div className="absolute left-3 top-3 z-30 flex items-center gap-0.5 rounded-lg border border-border bg-popover/95 p-0.5 shadow-lg backdrop-blur">
+          <div className="absolute left-3 top-3 z-30 flex items-center gap-0.5 rounded-md border border-border bg-popover/95 p-0.5 shadow-lg backdrop-blur">
             <Hint label="Back to projects">
               <button
                 className="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -61,7 +61,7 @@ export default function EditorPage({ projectId }: { projectId: string }) {
           </div>
         )}
         {!showRight && (
-          <div className="absolute right-3 top-3 z-30 flex items-center gap-0.5 rounded-lg border border-border bg-popover/95 p-0.5 shadow-lg backdrop-blur">
+          <div className="absolute right-3 top-3 z-30 flex items-center gap-0.5 rounded-md border border-border bg-popover/95 p-0.5 shadow-lg backdrop-blur">
             <UndoRedoButtons />
             <div className="mx-0.5 h-4 w-px bg-border" />
             <Hint label="Show properties panel">

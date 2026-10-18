@@ -2,11 +2,20 @@ import React, { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import Landing from '@/pages/Landing'
 import Dashboard from '@/pages/Dashboard'
+import DesignSystem from '@/pages/DesignSystem'
+import About from '@/pages/About'
+import Careers from '@/pages/Careers'
+import Gallery from '@/pages/Gallery'
 import EditorPage from '@/editor/EditorPage'
+import { ConfirmHost } from '@/components/ui/confirm'
 
 type Route =
   | { kind: 'landing' }
   | { kind: 'dashboard' }
+  | { kind: 'design' }
+  | { kind: 'about' }
+  | { kind: 'careers' }
+  | { kind: 'gallery' }
   | { kind: 'board'; id: string }
 
 function parsePath(): Route {
@@ -15,6 +24,10 @@ function parsePath(): Route {
   const m = /^\/board\/([A-Za-z0-9_-]+)/.exec(p)
   if (m) return { kind: 'board', id: m[1] }
   if (p.startsWith('/projects')) return { kind: 'dashboard' }
+  if (p.startsWith('/design-system')) return { kind: 'design' }
+  if (p.startsWith('/about')) return { kind: 'about' }
+  if (p.startsWith('/careers')) return { kind: 'careers' }
+  if (p.startsWith('/gallery')) return { kind: 'gallery' }
   return { kind: 'landing' }
 }
 
@@ -84,6 +97,14 @@ function App() {
   const page =
     route.kind === 'dashboard' ? (
       <Dashboard />
+    ) : route.kind === 'design' ? (
+      <DesignSystem />
+    ) : route.kind === 'about' ? (
+      <About />
+    ) : route.kind === 'careers' ? (
+      <Careers />
+    ) : route.kind === 'gallery' ? (
+      <Gallery />
     ) : route.kind === 'board' ? (
       <EditorPage key={route.id} projectId={route.id} />
     ) : (
@@ -105,6 +126,7 @@ function App() {
         </motion.div>
       </AnimatePresence>
       <AnimatePresence>{loader && <BoardLoader key="board-loader" />}</AnimatePresence>
+      <ConfirmHost />
     </>
   )
 }

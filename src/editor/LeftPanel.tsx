@@ -8,6 +8,8 @@ import { useProjects } from '@/store/projectsStore'
 import { setProps } from './commands'
 import { go } from '@/App'
 import { Hint, TooltipProvider } from '@/components/ui/tooltip'
+import { IconPage } from './proIcons'
+import { confirmDialog } from '@/components/ui/confirm'
 
 const typeIcon: Record<ShapeType, typeof Square> = {
   frame: Frame,
@@ -27,17 +29,19 @@ interface Row {
  * Flatten the tree for display: children sorted by descending z-order, frames expanded.
  * Shapes whose parent frame went missing are surfaced at the root level (defensive).
  */
-function flatten(out: Row[], nodes: Record<string, Shape>) {
+function flatten(out: Row[], nodes: Record<string, Shape>, activePage: string) {
+  const onPage = (s: Shape) => !s.pageId || s.pageId === activePage
   const walk = (parentId: string | null, depth: number) => {
     const kids = (childrenSorted(nodes).get(parentId) ?? []).slice().reverse()
     for (const s of kids) {
+      if (!onPage(s)) continue
       out.push({ s, depth })
       if (s.type === 'frame') walk(s.id, depth + 1)
     }
   }
   walk(null, 0)
   for (const s of Object.values(nodes)) {
-    if (s.parentId === null || nodes[s.parentId]) continue
+    if (s.parentId === null || nodes[s.parentId] || !onPage(s)) continue
     out.push({ s, depth: 0 })
     for (const d of Object.values(nodes)) {
       if (d.parentId === s.id) out.push({ s: d, depth: 1 })
@@ -47,6 +51,8 @@ function flatten(out: Row[], nodes: Record<string, Shape>) {
 
 export function LeftPanel({ projectId }: { projectId: string }) {
   const nodes = useDoc((s) => s.nodes)
+  const pages = useDoc((s) => s.pages)
+  const activePage = useDoc((s) => s.activePage)
   const selection = useUi((s) => s.selection)
   const editingText = useUi((s) => s.editingText)
   const projectName = useProjects((s) => s.projects.find((p) => p.id === projectId)?.name ?? 'Untitled')
@@ -71,7 +77,7 @@ export function LeftPanel({ projectId }: { projectId: string }) {
   hoverRef.current = hover
 
   const rows: Row[] = []
-  flatten(rows, nodes)
+  flatten(rows, nodes, activePage)
 
   const startDrag = (e: React.PointerEvent, id: string) => {
     if ((e.target as HTMLElement).closest('button')) return
@@ -181,16 +187,20 @@ export function LeftPanel({ projectId }: { projectId: string }) {
         </div>
 
         {/* Pages */}
-        <section className="border-b border-border px-3.5 pb-2 pt-3">
-          <div className="mb-2 flex min-h-6 items-center justify-between gap-1">
+        <section className="border-b border-border pb-2 pt-3">
+          <div className="mb-2 flex min-h-6 items-center justify-between gap-1 pl-3.5 pr-3.5">
             <span className="text-[13px] font-semibold tracking-[0.01em] text-foreground/90">Pages</span>
-            <Hint label="More pages soon">
-              <button className="cursor-pointer text-muted-foreground disabled:cursor-default disabled:opacity-40" disabled>
+            <Hint label="New page">
+              <button
+                className="cursor-pointer text-muted-foreground hover:text-foreground"
+                onClick={() => useDoc.getState().addPage()}
+                aria-label="New page"
+              >
                 <Plus size={13} />
               </button>
             </Hint>
           </div>
-          <div className="flex h-7 items-center gap-2 rounded-md bg-[#2b2b2b] px-2 text-[12px] font-medium text-foreground/90 ring-1 ring-inset ring-primary/40">Page 1</div>
+          <PagesList pages={pages} activePage={activePage} />
         </section>
 
         <section className="flex min-h-0 flex-1 flex-col pt-3">
@@ -221,7 +231,7 @@ export function LeftPanel({ projectId }: { projectId: string }) {
                 className={
                   'group mx-1.5 mb-0.5 flex h-6.5 items-center gap-2 rounded-md pr-0.5 select-none ' +
                   (selected ? 'bg-primary/15' : '') +
-                  (hovered && hover?.zone === 'in' ? ' ring-1 ring-inset ring-primary bg-accent' : '') +
+                  (hovered && hover?.zone === 'in' ? ' ring-1 ring-inset ring-ring bg-accent' : '') +
                   (drag?.id === s.id ? ' opacity-50' : ' hover:bg-accent/60')
                 }
                 style={{
@@ -287,5 +297,78 @@ export function LeftPanel({ projectId }: { projectId: string }) {
         </section>
       </aside>
     </TooltipProvider>
+  )
+}
+
+/**
+ * The page list: click to switch, double-click to rename, minus to delete
+ * (the last page cannot go). No borders — the active page just sits brighter.
+ */
+function PagesList({ pages, activePage }: { pages: { id: string; name: string }[]; activePage: string }) {
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const remove = async (id: string, name: string) => {
+    const ok = await confirmDialog({
+      title: `Delete ${name}?`,
+      message: 'The page and everything on it will be removed. This can be undone.',
+      confirmLabel: 'Delete',
+      danger: true,
+    })
+    if (ok) useDoc.getState().removePage(id)
+  }
+  return (
+    <div className="flex flex-col gap-0.5">
+      {pages.map((p) => {
+        const active = p.id === activePage
+        return (
+          <div
+            key={p.id}
+            className={
+              'group mx-1.5 flex h-6.5 items-center gap-1.5 rounded-md px-1.5 select-none ' +
+              (active ? 'bg-[#2b2b2b] text-foreground' : 'hover:bg-accent/60 text-foreground/80')
+            }
+          >
+            {renaming === p.id ? (
+              <input
+                autoFocus
+                defaultValue={p.name}
+                onBlur={(e) => {
+                  useDoc.getState().renamePage(p.id, e.target.value)
+                  setRenaming(null)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                  if (e.key === 'Escape') setRenaming(null)
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="min-w-0 flex-1 rounded bg-[#1c1c1c] px-1 text-[12px] font-medium outline-none"
+              />
+            ) : (
+              <button
+                className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 truncate text-left text-[12px] font-medium"
+                onClick={() => useDoc.getState().setActivePage(p.id)}
+                onDoubleClick={() => setRenaming(p.id)}
+              >
+                <IconPage size={12} className="shrink-0 opacity-80" />
+                {p.name}
+              </button>
+            )}
+            {pages.length > 1 && (
+              <Hint label={`Delete ${p.name}`}>
+                <button
+                  className={'shrink-0 ' + (active ? 'opacity-60 hover:opacity-100' : 'opacity-0 group-hover:opacity-60 hover:opacity-100')}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    remove(p.id, p.name)
+                  }}
+                  aria-label={`Delete ${p.name}`}
+                >
+                  <Minus size={12} />
+                </button>
+              </Hint>
+            )}
+          </div>
+        )
+      })}
+    </div>
   )
 }

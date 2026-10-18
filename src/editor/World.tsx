@@ -1,5 +1,6 @@
 import { memo, useMemo } from 'react'
 import { childrenSorted } from '@/model/geometry'
+import type { Shape } from '@/model/types'
 import { useDoc } from '@/store/docStore'
 import { ShapeNode } from './NodeView'
 
@@ -9,13 +10,15 @@ import { ShapeNode } from './NodeView'
  */
 export const World = memo(function World() {
   const nodes = useDoc((s) => s.nodes)
+  const activePage = useDoc((s) => s.activePage)
   const group = useMemo(() => childrenSorted(nodes), [nodes])
-  // paints roots plus any orphan whose parent frame is missing (defensive)
+  // paints roots plus any orphan whose parent frame is missing (defensive) — active page only
   const roots = useMemo(() => {
-    const base = group.get(null) ?? []
-    const orphans = Object.values(nodes).filter((s) => s.parentId && !nodes[s.parentId])
+    const onPage = (s: Shape) => !s.pageId || s.pageId === activePage
+    const base = (group.get(null) ?? []).filter(onPage)
+    const orphans = Object.values(nodes).filter((s) => s.parentId && !nodes[s.parentId] && onPage(s))
     return orphans.length ? [...base, ...orphans] : base
-  }, [group, nodes])
+  }, [group, nodes, activePage])
   return (
     <>
       {roots.map((s) => (

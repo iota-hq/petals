@@ -5,6 +5,7 @@ import type { Shape, ShapePatch } from '@/model/types'
 import { normalizeShape } from '@/model/defaults'
 import { descendantsOf, subtreeIds } from '@/model/geometry'
 import { useProjects } from './projectsStore'
+import { useUi } from './uiStore'
 
 export interface HistoryEntry {
   label: string
@@ -34,10 +35,10 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null
 function scheduleSave() {
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
-    const { docId, nodes } = useDoc.getState()
+    const { docId, nodes, pages, activePage } = useDoc.getState()
     if (!docId) return
     try {
-      localStorage.setItem(`petal.doc.v1.${docId}`, JSON.stringify({ v: 1, nodes }))
+      localStorage.setItem(`petal.doc.v1.${docId}`, JSON.stringify({ v: 1, nodes, pages, activePage }))
     } catch {
       /* storage full — ignore */
     }
@@ -48,8 +49,17 @@ function scheduleSave() {
 interface DocState {
   docId: string | null
   nodes: Record<string, Shape>
+  /** Order-preserving list of document pages. */
+  pages: PageMeta[]
+  activePage: string
   past: HistoryEntry[]
   future: HistoryEntry[]
+}
+
+/** A document page: shapes reference it through Shape.pageId. */
+export interface PageMeta {
+  id: string
+  name: string
 }
 
 interface DocActions {
@@ -65,6 +75,10 @@ interface DocActions {
   duplicateForDrag: (ids: string[], dx: number, dy: number) => string[]
   removeLive: (ids: string[]) => void
   beginTx: (label: string) => Tx
+  addPage: () => void
+  renamePage: (id: string, name: string) => void
+  removePage: (id: string) => void
+  setActivePage: (id: string) => void
   commitEntry: (entry: HistoryEntry) => void
   commitCreated: (ids: string[], label: string) => void
   undo: () => void
@@ -92,6 +106,13 @@ export const useDoc = create<DocStore>((set, get) => {
     set(
       produce((s: DocState) => {
         fn(s.nodes)
+        // keep every shape on a real page: fresh gestures, undo resurrections, etc.
+        if (!s.pages.length) s.pages = [{ id: 'page1', name: 'Page 1' }]
+        if (!s.pages.some((p) => p.id === s.activePage)) s.activePage = s.pages[0].id
+        for (const node of Object.values(s.nodes)) {
+          if (!node.pageId) node.pageId = s.activePage
+          else if (!s.pages.some((p) => p.id === node.pageId)) node.pageId = s.pages[0].id
+        }
       }),
     )
     scheduleSave()
@@ -134,28 +155,98 @@ export const useDoc = create<DocStore>((set, get) => {
   return {
     docId: null,
     nodes: {},
+    pages: [{ id: 'page1', name: 'Page 1' }],
+    activePage: 'page1',
     past: [],
     future: [],
 
     loadDoc(projectId) {
       let nodes: Record<string, Shape> = {}
+      let pages: PageMeta[] = []
+      let activePage = ''
       try {
         const raw = localStorage.getItem(`petal.doc.v1.${projectId}`)
         if (raw) {
-          const parsed = JSON.parse(raw) as { nodes?: Record<string, unknown> }
+          const parsed = JSON.parse(raw) as { nodes?: Record<string, unknown>; pages?: PageMeta[]; activePage?: string }
           for (const [id, n] of Object.entries(parsed.nodes ?? {})) {
             const s = normalizeShape(n)
             if (s) nodes[id] = s
           }
+          pages = (parsed.pages ?? []).filter((p) => p && p.id && p.name)
+          activePage = parsed.activePage ?? ''
         }
       } catch {
         nodes = {}
       }
-      // drop orphans whose parents no longer exist
+      if (!pages.length) pages = [{ id: 'page1', name: 'Page 1' }]
+      if (!pages.some((p) => p.id === activePage)) activePage = pages[0].id
+      // drop orphans whose parents no longer exist; re-home shapes onto a live page
       for (const s of Object.values(nodes)) {
         if (s.parentId && !nodes[s.parentId]) s.parentId = null
+        if (!s.pageId || !pages.some((p) => p.id === s.pageId)) s.pageId = pages[0].id
       }
-      set({ docId: projectId, nodes, past: [], future: [] })
+      set({ docId: projectId, nodes, pages, activePage, past: [], future: [] })
+    },
+
+    addPage() {
+      const { pages } = get()
+      const base = 'Page'
+      let n = pages.length + 1
+      while (pages.some((p) => p.name === `${base} ${n}`)) n++
+      const page = { id: nanoid(8), name: `${base} ${n}` }
+      set(
+        produce((s: DocState) => {
+          s.pages.push(page)
+          s.activePage = page.id
+        }),
+      )
+      useUi.getState().setSelection([])
+      scheduleSave()
+    },
+
+    renamePage(id, name) {
+      const clean = name.trim()
+      if (!clean) return
+      set(
+        produce((s: DocState) => {
+          const p = s.pages.find((x) => x.id === id)
+          if (p) p.name = clean
+        }),
+      )
+      scheduleSave()
+    },
+
+    removePage(id) {
+      const { pages, nodes } = get()
+      if (pages.length <= 1) return
+      const idx = pages.findIndex((p) => p.id === id)
+      if (idx < 0) return
+      // history keeps the removed shapes so undo can resurrect them onto the first page
+      const all = [...subtreeIds(nodes, Object.values(nodes).filter((s) => s.pageId === id).map((s) => s.id))]
+      const deleted: Shape[] = [...new Set(all)].map((sid) => nodes[sid]).filter(Boolean).map(clone)
+      applyMut((n) => {
+        for (const sid of all) {
+          if (n[sid] && n[sid].pageId === id) delete n[sid]
+        }
+      })
+      set(
+        produce((s: DocState) => {
+          s.pages = pages.filter((p) => p.id !== id)
+          if (s.activePage === id) s.activePage = s.pages[0].id
+        }),
+      )
+      useUi.getState().setSelection(
+        useUi.getState().selection.filter((sid) => !deleted.some((d) => d.id === sid)),
+      )
+      push({ label: `Delete ${pages[idx].name}`, created: [], deleted, changed: [] })
+      scheduleSave()
+    },
+
+    setActivePage(id) {
+      if (id !== get().activePage && get().pages.some((p) => p.id === id)) {
+        set({ activePage: id })
+        scheduleSave()
+      }
     },
 
     applyMut,

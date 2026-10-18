@@ -150,7 +150,7 @@ export function CanvasContextMenu({ onClose }: { onClose: () => void }) {
     <div
       data-context-menu
       style={{ top: pos!.y, left: pos!.x }}
-      className="fixed z-50 w-[208px] rounded-xl border border-border bg-popover/95 py-1 shadow-2xl backdrop-blur"
+      className="fixed z-50 w-[208px] rounded-md border border-border bg-popover/95 py-1 shadow-2xl backdrop-blur"
     >
       {subOpen ? (
         <>

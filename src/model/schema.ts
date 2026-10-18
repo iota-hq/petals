@@ -68,6 +68,9 @@ const nodeSchema = z.object({
   strokeWidth: z.number().optional(),
   shadow: shadowSchema.optional(),
   innerShadow: shadowSchema.optional(),
+  shadows: z
+    .array(shadowSchema.extend({ id: z.string(), kind: z.enum(['box', 'inner']) }))
+    .optional(),
   filters: z.record(z.string(), z.number()).optional(),
   margin: marginSchema.optional(),
   text: z.string().optional(),

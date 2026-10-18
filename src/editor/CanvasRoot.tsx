@@ -49,8 +49,24 @@ export function CanvasRoot() {
     }
     sync()
     const un = useUi.subscribe(sync)
+    // the canvas origin moves when a sidebar toggles (in-flow asides) —
+    // shift the camera by the origin delta so nothing on screen moves
+    const el = rootRef.current
+    if (!el) return
+    let last: { left: number; top: number } | null = null
+    const ro = new ResizeObserver(() => {
+      const r = el.getBoundingClientRect()
+      if (last && (r.left !== last.left || r.top !== last.top)) {
+        const cam = useUi.getState().camera
+        // screen = origin + camera + world → dCamera = -dOrigin keeps the screen fixed
+        useUi.getState().setCamera({ x: cam.x - (r.left - last.left), y: cam.y - (r.top - last.top), zoom: cam.zoom })
+      }
+      last = { left: r.left, top: r.top }
+    })
+    ro.observe(el)
     return () => {
       un()
+      ro.disconnect()
       canvasEl.current = null
     }
   }, [])

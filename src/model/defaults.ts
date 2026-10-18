@@ -69,10 +69,22 @@ export function normalizeShape(raw: unknown): Shape | null {
   shape.locked = r.locked === true
   // pass through optional fields that exist
   for (const key of ['fill', 'radius', 'radii', 'clip', 'x1', 'y1', 'x2', 'y2', 'stroke', 'strokeWidth',
-    'rotation', 'flipX', 'flipY', 'shadow', 'innerShadow', 'filters', 'margin',
+    'rotation', 'flipX', 'flipY', 'filters', 'margin', 'pageId',
     'text', 'fontSize', 'fontWeight', 'fontFamily', 'align', 'color', 'lineHeight', 'letterSpacing', 'src', 'fit'] as const) {
     const v = r[key]
     if (v !== undefined) (shape as unknown as Record<string, unknown>)[key] = v
+  }
+  // legacy two-slot shadows fold into the shadows list (box first, then inner) and die
+  const legacyShadow = (r as Partial<Shape>).shadow
+  const legacyInner = (r as Partial<Shape>).innerShadow
+  const shadows = (r as Partial<Shape>).shadows
+  if (shadows && shadows.length) {
+    shape.shadows = shadows.map((sh) => ({ ...sh }))
+  } else if (legacyShadow || legacyInner) {
+    const list: NonNullable<Shape['shadows']> = []
+    if (legacyShadow) list.push({ ...legacyShadow, id: nanoid(8), kind: 'box' })
+    if (legacyInner) list.push({ ...legacyInner, id: nanoid(8), kind: 'inner' })
+    shape.shadows = list
   }
   return shape
 }

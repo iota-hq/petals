@@ -591,7 +591,9 @@ export function pruneSelection() {
 
 export function selectAllTop(): string[] {
   const nodes = useDoc.getState().nodes
-  const ids = Object.values(nodes).filter((s) => s.parentId === null && s.visible).map((s) => s.id)
+  const active = useDoc.getState().activePage
+  const onPage = (s: Shape) => !s.pageId || s.pageId === active
+  const ids = Object.values(nodes).filter((s) => s.parentId === null && s.visible && onPage(s)).map((s) => s.id)
   useUi.setState({ selection: ids })
   return ids
 }
@@ -600,9 +602,10 @@ export function selectAllTop(): string[] {
 
 export function fitAll() {
   const nodes = useDoc.getState().nodes
+  const active = useDoc.getState().activePage
   const el = canvasEl.current
   if (!el) return
-  const rects = Object.values(nodes).map((s) => pageAABB(nodes, s))
+  const rects = Object.values(nodes).filter((s) => !s.pageId || s.pageId === active).map((s) => pageAABB(nodes, s))
   const b = boundsOfRects(rects)
   if (!b || (b.w <= 0 && b.h <= 0)) {
     useUi.setState({ camera: { x: 120, y: 90, zoom: 1 } })
@@ -675,7 +678,8 @@ export function dockCamera(zone: DockZone) {
   const el = canvasEl.current
   if (!el) return
   const nodes = useDoc.getState().nodes
-  const rects = Object.values(nodes).map((s) => pageAABB(nodes, s))
+  const active = useDoc.getState().activePage
+  const rects = Object.values(nodes).filter((s) => !s.pageId || s.pageId === active).map((s) => pageAABB(nodes, s))
   const b = boundsOfRects(rects)
   const cw = el.clientWidth
   const ch = el.clientHeight
@@ -1036,9 +1040,10 @@ export function finishEndpoint() {
 export function finishMarquee(start: Vec, point: Vec, additive: boolean) {
   const r = normRect(start, point)
   const nodes = useDoc.getState().nodes
+  const active = useDoc.getState().activePage
   const ids: string[] = []
   for (const s of Object.values(nodes)) {
-    if (s.parentId === null && s.visible) {
+    if (s.parentId === null && s.visible && (!s.pageId || s.pageId === active)) {
       if (rectIntersect(r, pageAABB(nodes, s))) ids.push(s.id)
     }
   }

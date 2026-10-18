@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { go } from '@/App'
+import { Hint } from '@/components/ui/tooltip'
 
 /** Compact dark pill (same style as "Open app"). */
 export const pillDark =
@@ -10,9 +11,9 @@ export const pillLight =
   'inline-flex h-9 items-center gap-2 rounded-full bg-white px-4 text-[13px] font-medium text-neutral-950 transition-colors hover:bg-white/90 cursor-pointer'
 
 const LINKS = [
-  ['About', '#'],
-  ['Careers', '#'],
-  ['Gallery', '#'],
+  ['About', '/about'],
+  ['Careers', '/careers'],
+  ['Gallery', '/gallery'],
 ] as const
 
 /**
@@ -44,10 +45,12 @@ export function PageMenu() {
         {open && (
           <div className="absolute left-0 top-11 flex w-max flex-col items-stretch gap-1.5">
             {LINKS.map(([label, href], i) => (
-              <motion.a
+              <motion.button
                 key={label}
-                href={href}
-                onClick={(e) => e.preventDefault()}
+                onClick={() => {
+                  setOpen(false)
+                  go(href)
+                }}
                 className={pillDark + ' justify-center'}
                 initial={{ opacity: 0, y: -10, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -55,12 +58,23 @@ export function PageMenu() {
                 transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1], delay: 0.12 + i * 0.1 }}
               >
                 {label}
-              </motion.a>
+              </motion.button>
             ))}
           </div>
         )}
       </AnimatePresence>
     </div>
+  )
+}
+
+/** Log-in stays closed for now — hovering explains why. */
+export function LoginPill() {
+  return (
+    <Hint label="Coming soon" side="bottom">
+      <button onClick={(e) => e.preventDefault()} className={pillDark}>
+        Log in
+      </button>
+    </Hint>
   )
 }
 

@@ -1,6 +1,7 @@
 export type ShapeType = 'frame' | 'rect' | 'ellipse' | 'line' | 'text' | 'image'
 export type Align = 'left' | 'center' | 'right' | 'justify'
 export type Fit = 'cover' | 'contain'
+export type ShadowKind = 'box' | 'inner'
 
 /** One gradient color stop. pos is 0..100 along the gradient axis. */
 export interface GradientStop {
@@ -40,6 +41,12 @@ export interface ShadowStyle {
   color: string
 }
 
+/** One shadow of a shape — a shape keeps a list of any mix of box and inner shadows. */
+export interface ShadowEntry extends ShadowStyle {
+  id: string
+  kind: ShadowKind
+}
+
 /** CSS-filter equivalent list (units in px / % / deg at render time). */
 export type Filters = Partial<{
   blur: number
@@ -70,6 +77,8 @@ export interface Shape {
   type: ShapeType
   name: string
   parentId: string | null
+  /** Page the shape lives on (may be missing on very old docs — treated as the first page). */
+  pageId?: string
   /** Fractional z-order among siblings; sorted on read. */
   order: number
   x: number
@@ -99,6 +108,8 @@ export interface Shape {
   // rect / ellipse / frame / image / text
   shadow?: ShadowStyle
   innerShadow?: ShadowStyle
+  /** the live list (box + inner in any mix); legacy shadow/innerShadow migrate into it */
+  shadows?: ShadowEntry[]
   filters?: Filters
   // frame content-box inset
   margin?: Margin

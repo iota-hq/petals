@@ -12,9 +12,10 @@ const UI_FONT = '"Geist Variable", ui-sans-serif, system-ui, -apple-system, "Seg
 
 /** Style bits shared by every box-like shape: fill-extras, shadows, filters, rotation. */
 function boxShadowOf(s: Shape): string | undefined {
-  const outer = shadowToCss(s.shadow)
-  const inner = shadowToCss(s.innerShadow, true)
-  return [outer, inner].filter(Boolean).join(', ') || undefined
+  const list = s.shadows?.length
+    ? s.shadows.map((sh) => shadowToCss(sh, sh.kind === 'inner')!)
+    : [shadowToCss(s.shadow), shadowToCss(s.innerShadow, true)]
+  return list.filter(Boolean).join(', ') || undefined
 }
 
 function sameChildren(a: Shape[] | undefined, b: Shape[] | undefined): boolean {

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import { HexColorPicker } from 'react-colorful'
 import {
   AlignCenterHorizontal,
@@ -27,14 +28,15 @@ import {
   Type,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import type { Filters, Gradient, GradientStop, ImageFill, Margin, Shape, ShapePatch, ShadowStyle, ShapeType } from '@/model/types'
+import { nanoid } from 'nanoid'
+import type { Filters, Gradient, GradientStop, ImageFill, Margin, Shape, ShapePatch, ShadowEntry, ShadowKind, ShadowStyle, ShapeType } from '@/model/types'
 import { pageAABB, selectionRoots, boundsOfRects } from '@/model/geometry'
 import { fillToCss, radiusToCss } from '@/model/styles'
 import { useDoc, type Tx } from '@/store/docStore'
 import { useUi, DEFAULT_CANVAS_BG, setZoomAroundCenter } from '@/store/uiStore'
 import { fileToImageSrc, addImageFile, alignSelection, canvasEl, nudge, setProps, type AlignEdge } from './commands'
 import { downloadSelectionCode, exportSelectionEPS, exportSelectionPNG, exportSelectionRaster, exportSelectionSVG } from './exporters'
-import { IconBlur, IconBrightness, IconContrast, IconConic, IconGradientFill, IconGrayscale, IconHue, IconImageFill, IconInvert, IconLinear, IconLetterSpacing, IconMargin, IconOpacity, IconRadial, IconRadius, IconRotate, IconSepia, IconSaturate, IconSolidFill, IconSpread, IconFontSize, IconLineHeight, IconStrokeWidth } from './proIcons'
+import { IconBlur, IconBrightness, IconBoxShadow, IconContrast, IconConic, IconGradientFill, IconGrayscale, IconHue, IconImageFill, IconInnerShadow, IconInvert, IconLinear, IconLetterSpacing, IconMargin, IconOpacity, IconRadial, IconRadius, IconRotate, IconSepia, IconSaturate, IconSolidFill, IconSpread, IconFontSize, IconLineHeight, IconStrokeWidth } from './proIcons'
 import { FontPicker, useGoogleFonts, type FontEntry } from './FontPicker'
 import { UndoRedoButtons } from './UndoRedoButtons'
 import { Button } from '@/components/ui/button'
@@ -139,7 +141,7 @@ function Section({
 
   return (
     <section className={(open ? 'px-3.5 py-3' : 'px-3.5 py-2') + ' border-b border-border'}>
-      <div className={(open ? 'mb-2 ' : '') + 'flex min-h-5 items-center justify-between gap-1'}>
+      <div className="flex min-h-5 items-center justify-between gap-1">
         <button
           onClick={toggle}
           className="flex min-w-0 cursor-pointer items-baseline gap-1.5 text-left"
@@ -153,7 +155,20 @@ function Section({
           {indicator}
         </div>
       </div>
-      {(!addable ? openState : open) && <div className="space-y-1.5">{children}</div>}
+      <AnimatePresence initial={false}>
+        {(!addable ? openState : open) && (
+          <motion.div
+            key="body"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="space-y-1.5 pt-2">{children}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </section>
   )
 }
@@ -209,6 +224,8 @@ function useLiveTx() {
 
 interface NumFieldProps {
   label?: string
+  /** trailing unit rendered after the value (e.g. percent) */
+  unit?: string
   icon?: ReactNode
   value: number
   /** displayed = stored × scale (e.g. opacity stored 0..1 → scale 100) */
@@ -233,6 +250,7 @@ const clampField = (v: number, min?: number, max?: number) => {
 
 function NumField({
   label,
+  unit,
   icon,
   value,
   scale = 1,
@@ -333,6 +351,18 @@ function NumField({
           }
         }}
       />
+      {unit && (
+        <span
+          className={
+            'shrink-0 select-none text-center text-[11px] ' +
+            (unit.length > 2 ? 'px-0.5 ' : 'w-3.5 ') +
+            (canScrub ? 'cursor-ew-resize text-muted-foreground' : 'text-muted-foreground/70')
+          }
+          onPointerDown={startScrub}
+        >
+          {unit}
+        </span>
+      )}
     </label>
   )
 }
@@ -427,7 +457,7 @@ function ColorPopover({
     <div
       ref={popoverRef}
       style={{ top: pos.top, left: pos.left }}
-      className="fixed z-50 w-[192px] rounded-xl border border-border bg-popover/95 p-2 shadow-2xl backdrop-blur"
+      className="fixed z-50 w-[192px] rounded-md border border-border bg-popover/95 p-2 shadow-2xl backdrop-blur"
       onPointerDown={(e) => e.stopPropagation()}
     >
       <HexColorPicker color={hex} onChange={onPick} />
@@ -503,8 +533,7 @@ function ColorBoxRow({
           pop.toggle(e)
         }}
         className={
-          'relative flex h-7 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-lg bg-[#2b2b2b] px-1.5 ' +
-          (pop.open || selected ? 'ring-1 ring-ring' : '')
+          'relative flex h-7 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md bg-[#2b2b2b] px-1.5 ' + (selected ? 'bg-[#353535]' : '')
         }
       >
         <ColorButton sm color={hasColor ? (hex6 ?? value!) : 'transparent'} onClick={(e) => pop.toggle(e)} />
@@ -512,7 +541,7 @@ function ColorBoxRow({
         <div className="ml-auto flex w-12 min-w-0 items-center" onClick={(e) => e.stopPropagation()}>
           <NumField
             plain
-            label="%"
+            unit="%"
             scale={100}
             step={0.01}
             min={0}
@@ -607,7 +636,7 @@ function MiniSelect<T extends string>({
         disabled={disabled}
         onClick={pop.toggle}
         className={
-          'flex h-7 w-full min-w-0 cursor-pointer items-center justify-between gap-1 rounded-lg border border-transparent bg-[#2b2b2b] px-2 text-[12px] font-medium text-foreground/90 hover:border-border focus:outline-none ' +
+          'flex h-7 w-full min-w-0 cursor-pointer items-center justify-between gap-1 rounded-md border border-transparent bg-[#2b2b2b] px-2 text-[12px] font-medium text-foreground/90 hover:border-border focus:outline-none ' +
           (disabled ? 'cursor-default opacity-40' : '')
         }
       >
@@ -618,7 +647,7 @@ function MiniSelect<T extends string>({
         <div
           ref={pop.ref}
           style={{ top: pop.pos.top, left: pop.pos.left }}
-          className="fixed z-50 w-[192px] rounded-xl border border-border bg-popover/95 py-1 shadow-2xl backdrop-blur"
+          className="fixed z-50 w-[192px] rounded-md border border-border bg-popover/95 py-1 shadow-2xl backdrop-blur"
         >
           {options.map(([v, l]) => {
             const off = disabledOptions?.includes(v) ?? false
@@ -693,42 +722,7 @@ const imageFillOf = (fill: Shape['fill']): ImageFill | null =>
   typeof fill === 'object' && fill && fill.type === 'image' ? (fill as ImageFill) : null
 
 /** Built-in placeholder picture used until the user chooses their own image fill. */
-const PLACEHOLDER_IMAGE =
-  'data:image/svg+xml;charset=utf-8,' +
-  encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="360"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f472b6"/><stop offset="0.55" stop-color="#a855f7"/><stop offset="1" stop-color="#312e81"/></linearGradient></defs><rect width="480" height="360" fill="#231f28"/><circle cx="150" cy="150" r="88" fill="url(#g)"/><circle cx="330" cy="240" r="120" fill="url(#g)" opacity="0.65"/><circle cx="330" cy="110" r="60" fill="url(#g)" opacity="0.45"/></svg>`,
-  )
-
-/** Segmented mode switcher row (icon or text labels; optional native titles for icon-only modes). */
-function Seg<T extends string>({
-  options,
-  value,
-  onChange,
-  titles,
-}: {
-  options: readonly (readonly [T, ReactNode])[]
-  titles?: Partial<Record<T, string>>
-  value: T
-  onChange: (v: T) => void
-}) {
-  return (
-    <div className="flex items-center gap-0.5 rounded-lg bg-[#2b2b2b] p-0.5">
-      {options.map(([m, label]) => (
-        <button
-          key={m}
-          title={titles?.[m]}
-          onClick={() => onChange(m)}
-          className={
-            'flex flex-1 cursor-pointer items-center justify-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors ' +
-            (value === m ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-accent hover:text-foreground')
-          }
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  )
-}
+const PLACEHOLDER_IMAGE = '/petal-pattern.svg'
 
 /** Gradient bar with draggable / clickable color stops, like the Figma gradient editor. */
 function GradientBar({
@@ -797,10 +791,10 @@ function GradientBar({
           }}
           aria-label={`Gradient stop ${i + 1}`}
           className={
-            'absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 cursor-pointer rounded-full border-2 shadow ' +
-            (selected === i ? 'border-primary' : 'border-white/90')
+            'absolute top-1/2 h-3.5 w-2.5 -translate-x-1/2 -translate-y-1/2 cursor-pointer rounded-[4px] border-2 shadow-sm ' +
+            (selected === i ? 'border-white' : 'border-white/60')
           }
-          style={{ left: `${st.pos}%` }}
+          style={{ left: `${st.pos}%`, background: st.color }}
         />
       ))}
     </div>
@@ -815,6 +809,7 @@ function FillField({ s }: { s: Shape }) {
   const mode: 'solid' | 'gradient' | 'image' = g ? 'gradient' : image ? 'image' : 'solid'
   const [sel, setSel] = useState(0)
   const { live, end } = useLiveTx()
+  const kindPop = usePopFixed()
 
   const setFill = (v: Shape['fill'], label: string) =>
     setProps([s.id], { fill: v === undefined ? 'transparent' : v } as ShapePatch, label)
@@ -824,23 +819,30 @@ function FillField({ s }: { s: Shape }) {
     if (m === 'solid') {
       const base = solid ?? (g ? g.stops[0]?.color : undefined) ?? '#f472b6'
       setFill(base, 'Solid fill')
-    } else if (m === 'gradient') {
-      const base = solid ?? '#f472b6'
-      setFill(
-        {
-          type: 'linear',
-          angle: g?.angle ?? 90,
-          stops: [
-            { color: base, alpha: 1, pos: 0 },
-            { color: '#ffffff', alpha: 1, pos: 100 },
-          ],
-        },
-        'Gradient fill',
-      )
-      setSel(0)
-    } else {
+    } else if (m === 'image') {
       setFill({ type: 'image', src: image?.src ?? s.src ?? PLACEHOLDER_IMAGE, fit: image?.fit ?? 'cover' }, 'Image fill')
     }
+  }
+
+  /** Choose a gradient variety — patching the live gradient or minting a two-stop one. */
+  const setGradient = (type: Gradient['type']) => {
+    if (g) {
+      patchG({ type }, 'Gradient type')
+      return
+    }
+    const base = solid ?? '#f472b6'
+    setFill(
+      {
+        type,
+        angle: 90,
+        stops: [
+          { color: base, alpha: 1, pos: 0 },
+          { color: '#ffffff', alpha: 1, pos: 100 },
+        ],
+      },
+      'Gradient fill',
+    )
+    setSel(0)
   }
 
   const patchG = (patch: Partial<Gradient>, label: string) => {
@@ -882,55 +884,95 @@ function FillField({ s }: { s: Shape }) {
 
   return (
     <>
-      <Seg
-        options={
-          [
-            ['solid', <IconSolidFill size={13} />],
-            ['gradient', <IconGradientFill size={13} />],
-            ['image', <IconImageFill size={13} />],
-          ] as const
-        }
-        titles={{ solid: 'Solid', gradient: 'Gradient', image: 'Image' }}
-        value={mode}
-        onChange={pick}
-      />
+      {/* fill kind: flat icon row — Gradient opens the nested direction menu */}
+      <Row>
+        <Hint label="Solid fill">
+          <button
+            aria-label="Solid fill"
+            onClick={() => pick('solid')}
+            className={
+              'flex size-7 cursor-pointer items-center justify-center rounded-md ' +
+              (mode === 'solid' ? 'bg-[#2b2b2b] text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground')
+            }
+          >
+            <IconSolidFill size={14} />
+          </button>
+        </Hint>
+        <Hint label="Gradient fill">
+          <button
+            aria-label="Gradient fill"
+            onClick={(e) => kindPop.toggle(e)}
+            className={
+              'flex size-7 cursor-pointer items-center justify-center rounded-md ' +
+              (mode === 'gradient' ? 'bg-[#2b2b2b] text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground')
+            }
+          >
+            <IconGradientFill size={14} />
+          </button>
+        </Hint>
+        <Hint label="Image fill">
+          <button
+            aria-label="Image fill"
+            onClick={() => pick('image')}
+            className={
+              'flex size-7 cursor-pointer items-center justify-center rounded-md ' +
+              (mode === 'image' ? 'bg-[#2b2b2b] text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground')
+            }
+          >
+            <IconImageFill size={14} />
+          </button>
+        </Hint>
+      </Row>
+      {kindPop.open && (
+        <div
+          ref={kindPop.ref}
+          style={{ top: kindPop.pos.top, left: kindPop.pos.left }}
+          className="fixed z-50 w-[180px] rounded-md border border-border bg-popover/95 py-1.5 shadow-2xl backdrop-blur"
+        >
+          <div className="px-2.5 pb-1 pt-0.5 text-[10px] font-normal text-muted-foreground/70">
+            Gradient direction
+          </div>
+          {(
+            [
+              ['linear', IconLinear, 'Linear'],
+              ['radial', IconRadial, 'Radial'],
+              ['conic', IconConic, 'Conic'],
+            ] as const
+          ).map(([t, Icon, label]) => (
+            <button
+              key={t}
+              onClick={() => {
+                setGradient(t)
+                kindPop.setOpen(false)
+              }}
+              className={'flex w-full cursor-pointer items-center gap-2 px-2.5 py-1.5 text-left text-[12px] font-medium text-foreground/90 hover:bg-accent ' + (g?.type === t ? 'bg-accent/60' : '')}
+            >
+              <span className="text-muted-foreground/80">
+                <Icon size={13} />
+              </span>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
       {mode === 'solid' && <ColorField shapeId={s.id} field="fill" txLabel="Solid fill" value={solid} noneable />}
       {mode === 'gradient' && g && (
         <>
-          <GradientBar
-            g={g}
-            selected={sel}
-            setSelected={setSel}
-            onStopLive={(stops) => patchGLive({ stops })}
-            onEnd={end}
-            onAdd={(pos) => {
-              const stops = [...g.stops, { color: '#808080', alpha: 1, pos }].sort((a, b) => a.pos - b.pos)
-              setSel(g.stops.length)
-              patchG({ stops }, 'Add gradient stop')
-            }}
-          />
-          <Row>
-            <Seg
-              options={
-                [
-                  ['linear', <IconLinear size={12} />],
-                  ['radial', <IconRadial size={12} />],
-                  ['conic', <IconConic size={12} />],
-                ] as const
-              }
-              titles={{ linear: 'Linear', radial: 'Radial', conic: 'Conic' }}
-              value={g.type}
-              onChange={(t) => patchG({ type: t }, 'Gradient type')}
+          {/* the bar sits on a padded slot so the end stop chips never clip the column */}
+          <div className="px-1.5">
+            <GradientBar
+              g={g}
+              selected={sel}
+              setSelected={setSel}
+              onStopLive={(stops) => patchGLive({ stops })}
+              onEnd={end}
+              onAdd={(pos) => {
+                const stops = [...g.stops, { color: '#808080', alpha: 1, pos }].sort((a, b) => a.pos - b.pos)
+                setSel(g.stops.length)
+                patchG({ stops }, 'Add gradient stop')
+              }}
             />
-            <Hint label="Add stop">
-              <button
-                className="cursor-pointer px-1 text-muted-foreground hover:text-foreground"
-                onClick={() => addStopAt(50)}
-              >
-                <Plus size={13} />
-              </button>
-            </Hint>
-          </Row>
+          </div>
           {/* stops as color rows: swatch · hex · alpha % — like the canvas color fields */}
           <div className="flex flex-col gap-1" onPointerDownCapture={() => setSel(Math.min(sel, g.stops.length - 1))}>
             {g.stops.map((st, i) => (
@@ -954,6 +996,14 @@ function FillField({ s }: { s: Shape }) {
               />
             ))}
           </div>
+          <button
+            onClick={() => addStopAt(50)}
+            aria-label="Add stop"
+            className="-my-1 flex h-6.5 w-full cursor-pointer items-center gap-1.5 rounded-md px-1 text-left text-[12px] font-medium text-muted-foreground hover:text-foreground"
+          >
+            <Plus size={13} />
+            Add stop
+          </button>
           {g.stops[Math.min(sel, g.stops.length - 1)] && (() => {
             const i = Math.min(sel, g.stops.length - 1)
             const st = g.stops[i]
@@ -1030,68 +1080,140 @@ function FillField({ s }: { s: Shape }) {
 
 const SHADOW_DEFAULT: ShadowStyle = { x: 0, y: 8, blur: 24, spread: 0, color: '#00000066' }
 
-/** Drop / inner shadow editor, shared shape of the two sections. */
-function ShadowSection({ s, field, title }: { s: Shape; field: 'shadow' | 'innerShadow'; title: string }) {
-  const sh = s[field]
-  const { live, end } = useLiveTx()
-
-  const setF = (patch: Partial<ShadowStyle>, label: string) => {
-    const base = (sh ?? SHADOW_DEFAULT) as ShadowStyle
-    setProps([s.id], { [field]: { ...base, ...patch } } as ShapePatch, label)
+/**
+ * Shadow section: a small "add shadow" menu (like the filters one) offering box
+ * and inner shadow; each pick APPENDS a shadow, so an element carries any mix
+ * of several. Every present shadow gets its own block with X/Y/blur/spread + color.
+ */
+function ShadowsSection({ s }: { s: Shape }) {
+  const shadows = s.shadows ?? []
+  const pop = usePopFixed()
+  const add = (kind: ShadowKind) => {
+    const entry: ShadowEntry = { id: nanoid(8), kind, ...SHADOW_DEFAULT }
+    setProps([s.id], { shadows: [...(s.shadows ?? []), entry] }, `Add ${kind} shadow`)
+    pop.setOpen(false)
   }
-  const setFLive = (patch: Partial<ShadowStyle>) => {
-    const base = (sh ?? SHADOW_DEFAULT) as ShadowStyle
-    live(s.id, { [field]: { ...base, ...patch } } as ShapePatch, 'Shadow')
+  return (
+    <Section
+      title="Shadow"
+      /** remount when it flips between empty/non-empty so defaultOpen picks the right state */
+      key={shadows.length === 0 ? 'no-shadows' : 'has-shadows'}
+      defaultOpen={shadows.length > 0}
+      addSlot={
+        <div className="relative">
+          <Hint label="Add shadow">
+            <button onClick={pop.toggle} className="cursor-pointer text-muted-foreground hover:text-foreground" aria-label="Add shadow">
+              <Plus size={13} />
+            </button>
+          </Hint>
+          {pop.open && (
+            <div
+              ref={pop.ref}
+              style={{ top: pop.pos.top, left: pop.pos.left }}
+              className="fixed z-50 w-[180px] rounded-md border border-border bg-popover/95 py-1.5 shadow-2xl backdrop-blur"
+            >
+              <div className="px-2.5 pb-1 pt-0.5 text-[10px] font-normal text-muted-foreground/70">
+                Add shadow
+              </div>
+              <button
+                onClick={() => add('box')}
+                className="flex w-full cursor-pointer items-center gap-2 px-2.5 py-1.5 text-left text-[12px] font-medium text-foreground/90 hover:bg-accent"
+              >
+                <span className="text-muted-foreground/80">
+                  <IconBoxShadow size={13} />
+                </span>
+                Box shadow
+              </button>
+              <button
+                onClick={() => add('inner')}
+                className="flex w-full cursor-pointer items-center gap-2 px-2.5 py-1.5 text-left text-[12px] font-medium text-foreground/90 hover:bg-accent"
+              >
+                <span className="text-muted-foreground/80">
+                  <IconInnerShadow size={13} />
+                </span>
+                Inner shadow
+              </button>
+            </div>
+          )}
+        </div>
+      }
+    >
+      {shadows.map((sh) => (
+        <ShadowBlock key={sh.id} s={s} sh={sh} />
+      ))}
+    </Section>
+  )
+}
+
+/** One shadow in the list: header with kind + remove, then its editing fields. */
+function ShadowBlock({ s, sh }: { s: Shape; sh: ShadowEntry }) {
+  const { live, end } = useLiveTx()
+  const label = sh.kind === 'box' ? 'Box shadow' : 'Inner shadow'
+
+  const apply = (patch: Partial<ShadowStyle>, txLabel: string) => {
+    if (!s.shadows) return
+    setProps([s.id], { shadows: s.shadows.map((x) => (x.id === sh.id ? { ...x, ...patch } : x)) }, txLabel)
+  }
+  const applyLive = (patch: Partial<ShadowStyle>) => {
+    if (!s.shadows) return
+    live(s.id, { shadows: s.shadows.map((x) => (x.id === sh.id ? { ...x, ...patch } : x)) }, 'Shadow')
+  }
+  const remove = () => {
+    if (!s.shadows) return
+    setProps([s.id], { shadows: s.shadows.filter((x) => x.id !== sh.id) }, `Remove ${label.toLowerCase()}`)
   }
 
   return (
-    <Section
-      title={title}
-      open={!!sh}
-      onAdd={!sh ? () => setProps([s.id], { [field]: SHADOW_DEFAULT } as ShapePatch, 'Add shadow') : undefined}
-      onRemove={
-        sh
-          ? () => setProps([s.id], { [field]: undefined } as ShapePatch, 'Remove shadow')
-          : undefined
-      }
-    >
-      {sh && (
-        <>
-          <Row>
-            <NumField
-              label="X"
-              value={sh.x}
-              onLive={(v) => setFLive({ x: v })}
-              onEnd={end}
-              onCommit={(v) => setF({ x: v }, 'Shadow offset')}
-            />
-            <NumField
-              label="Y"
-              value={sh.y}
-              onLive={(v) => setFLive({ y: v })}
-              onEnd={end}
-              onCommit={(v) => setF({ y: v }, 'Shadow offset')}
-            />
-            <NumField
-              icon={<IconBlur />}
-              min={0}
-              value={sh.blur}
-              onLive={(v) => setFLive({ blur: Math.max(0, v) })}
-              onEnd={end}
-              onCommit={(v) => setF({ blur: Math.max(0, v) }, 'Shadow blur')}
-            />
-            <NumField
-              icon={<IconSpread />}
-              value={sh.spread ?? 0}
-              onLive={(v) => setFLive({ spread: v })}
-              onEnd={end}
-              onCommit={(v) => setF({ spread: v }, 'Shadow spread')}
-            />
-          </Row>
-          <ColorBoxRow value={sh.color} onApply={(c) => setF({ color: c }, 'Shadow color')} />
-        </>
-      )}
-    </Section>
+    <div className="flex flex-col gap-1.5">
+      <div className="flex h-5 items-center gap-1.5">
+        <span className="flex shrink-0 cursor-default items-center text-muted-foreground">
+          {sh.kind === 'box' ? <IconBoxShadow size={13} /> : <IconInnerShadow size={13} />}
+        </span>
+        <button
+          className="min-w-0 flex-1 cursor-pointer truncate text-left text-[13px] font-semibold tracking-[0.01em] text-foreground/90"
+          onClick={() => remove()}
+        >
+          {label}
+        </button>
+        <Hint label={`Remove ${label.toLowerCase()}`}>
+          <button className="cursor-pointer text-muted-foreground hover:text-foreground" onClick={remove} aria-label={`Remove ${label}`}>
+            <Minus size={13} />
+          </button>
+        </Hint>
+      </div>
+      <Row>
+        <NumField
+          label="X"
+          value={sh.x}
+          onLive={(v) => applyLive({ x: v })}
+          onEnd={end}
+          onCommit={(v) => apply({ x: v }, 'Shadow offset')}
+        />
+        <NumField
+          label="Y"
+          value={sh.y}
+          onLive={(v) => applyLive({ y: v })}
+          onEnd={end}
+          onCommit={(v) => apply({ y: v }, 'Shadow offset')}
+        />
+        <NumField
+          icon={<IconBlur />}
+          min={0}
+          value={sh.blur}
+          onLive={(v) => applyLive({ blur: Math.max(0, v) })}
+          onEnd={end}
+          onCommit={(v) => apply({ blur: Math.max(0, v) }, 'Shadow blur')}
+        />
+        <NumField
+          icon={<IconSpread />}
+          value={sh.spread ?? 0}
+          onLive={(v) => applyLive({ spread: v })}
+          onEnd={end}
+          onCommit={(v) => apply({ spread: v }, 'Shadow spread')}
+        />
+      </Row>
+      <ColorBoxRow value={sh.color} onApply={(c) => apply({ color: c }, 'Shadow color')} />
+    </div>
   )
 }
 
@@ -1136,9 +1258,9 @@ function FilterAddMenu({ s }: { s: Shape }) {
         <div
           ref={pop.ref}
           style={{ top: pop.pos.top, left: pop.pos.left }}
-          className="fixed z-50 w-[192px] rounded-xl border border-border bg-popover/95 py-1.5 shadow-2xl backdrop-blur"
+          className="fixed z-50 w-[192px] rounded-md border border-border bg-popover/95 py-1.5 shadow-2xl backdrop-blur"
         >
-          <div className="px-2.5 pb-1 pt-0.5 text-[10px] font-normal uppercase tracking-[0.06em] text-muted-foreground/70">
+          <div className="px-2.5 pb-1 pt-0.5 text-[10px] font-normal text-muted-foreground/70">
             Add filter
           </div>
           {FILTER_KINDS.map((k) => (
@@ -1411,14 +1533,27 @@ function RadiusField({
   const setCornerLive = (c: 'tl' | 'tr' | 'br' | 'bl') => (v: number) =>
     live(s.id, { radius: 0, radii: { tl: val('tl'), tr: val('tr'), br: val('br'), bl: val('bl'), [c]: Math.max(0, v) } as Shape['radii'] & Record<string, number> }, 'Corner radius')
 
+  /** The same throw-away-corner mark, flipped to point at each corner. */
+  const CornerIcon = ({ c }: { c: 'tl' | 'tr' | 'br' | 'bl' }) => (
+    <img
+      src="/TablerBorderRadius.png"
+      alt=""
+      className="size-4"
+      style={{
+        transform:
+          c === 'tl' ? 'none' : c === 'tr' ? 'scaleX(-1)' : c === 'bl' ? 'scaleY(-1)' : 'scale(-1, -1)',
+      }}
+    />
+  )
+
   return (
     <Row>
       {expanded ? (
         <>
-          <NumField key="tl" label="TL" min={0} value={val('tl')} onLive={setCornerLive('tl')} onEnd={end} onCommit={setCorner('tl')} />
-          <NumField key="tr" label="TR" min={0} value={val('tr')} onLive={setCornerLive('tr')} onEnd={end} onCommit={setCorner('tr')} />
-          <NumField key="br" label="BR" min={0} value={val('br')} onLive={setCornerLive('br')} onEnd={end} onCommit={setCorner('br')} />
-          <NumField key="bl" label="BL" min={0} value={val('bl')} onLive={setCornerLive('bl')} onEnd={end} onCommit={setCorner('bl')} />
+          <NumField key="tl" icon={<CornerIcon c="tl" />} min={0} value={val('tl')} onLive={setCornerLive('tl')} onEnd={end} onCommit={setCorner('tl')} />
+          <NumField key="tr" icon={<CornerIcon c="tr" />} min={0} value={val('tr')} onLive={setCornerLive('tr')} onEnd={end} onCommit={setCorner('tr')} />
+          <NumField key="br" icon={<CornerIcon c="br" />} min={0} value={val('br')} onLive={setCornerLive('br')} onEnd={end} onCommit={setCorner('br')} />
+          <NumField key="bl" icon={<CornerIcon c="bl" />} min={0} value={val('bl')} onLive={setCornerLive('bl')} onEnd={end} onCommit={setCorner('bl')} />
           <Hint label="Uniform corners">
             <button onClick={() => setExpanded(false)} className="cursor-pointer text-muted-foreground hover:text-foreground">
               <Minimize2 size={12} />
@@ -1740,8 +1875,7 @@ export function PropertiesPanel() {
 
         {(s.type === 'rect' || s.type === 'ellipse' || s.type === 'frame' || s.type === 'image' || s.type === 'text') && (
           <>
-            <ShadowSection s={s} field="shadow" title="Shadow" />
-            <ShadowSection s={s} field="innerShadow" title="Inner shadow" />
+            <ShadowsSection s={s} />
           </>
         )}
 
@@ -1831,7 +1965,7 @@ function ExportMenu() {
         <div
           ref={pop.ref}
           style={{ top: pop.pos.top, left: pop.pos.left }}
-          className="fixed z-50 w-[192px] rounded-xl border border-border bg-popover/95 py-1 shadow-2xl backdrop-blur"
+          className="fixed z-50 w-[192px] rounded-md border border-border bg-popover/95 py-1 shadow-2xl backdrop-blur"
         >
           {items.map(([label, sub, run]) => (
             <button

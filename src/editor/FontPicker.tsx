@@ -213,7 +213,7 @@ export const FontPicker = memo(function FontPicker({
             <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
             <div
               role="listbox"
-              className="fixed z-[70] flex flex-col overflow-hidden rounded-xl border border-border bg-[#2c2c2c]/95 shadow-2xl backdrop-blur"
+              className="fixed z-[70] flex flex-col overflow-hidden rounded-md border border-border bg-[#2c2c2c]/95 shadow-2xl backdrop-blur"
               style={{ left: menu.left, width: menu.width, top: menu.top, bottom: menu.bottom }}
             >
               {/* header: shows the current face; typing searches it */}
