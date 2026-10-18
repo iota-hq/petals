@@ -18,7 +18,7 @@ import {
   type Vec,
 } from '@/model/geometry'
 import { useDoc, type Tx } from '@/store/docStore'
-import { MIN_ZOOM, useUi, setZoomAroundCenter, type Handle } from '@/store/uiStore'
+import { MIN_ZOOM, useUi, setZoomAroundCenter, type Camera, type Handle } from '@/store/uiStore'
 import { canvasEl, pageFromClient } from './view'
 
 export { canvasEl, pageFromClient }
@@ -621,6 +621,79 @@ export function afterLoadCamera() {
   const nodes = useDoc.getState().nodes
   if (Object.keys(nodes).length) fitAll()
   else useUi.setState({ camera: { x: 140, y: 100, zoom: 1 } })
+}
+
+/* ============================== drag-to-fill (edge strips) ============================== */
+
+export type DockZone = 'top' | 'bottom' | 'left' | 'right'
+
+/** Geometry shared by the visual strips (DockZones) and hit-testing: an inset box reaching `strip` px from each canvas edge. */
+export const DOCK_INSET = 8
+export const DOCK_STRIP = 96
+
+/** Which edge strip sits under this client point (null = none). Left/right win at corners. */
+export function dockZoneAt(cx: number, cy: number): DockZone | null {
+  const el = canvasEl.current
+  if (!el) return null
+  const r = el.getBoundingClientRect()
+  const px = cx - r.left
+  const py = cy - r.top
+  const edge = DOCK_INSET + DOCK_STRIP
+  if (px < 0 || py < 0 || px > r.width || py > r.height) return null
+  if (px < edge) return 'left'
+  if (px > r.width - edge) return 'right'
+  if (py < edge) return 'top'
+  if (py > r.height - edge) return 'bottom'
+  return null
+}
+
+/** Ease the camera to a pose, ~240ms cubic-out. */
+function tweenCamera(target: Camera, ms = 240) {
+  const from = useUi.getState().camera
+  const start = performance.now()
+  const step = (t: number) => {
+    const k = Math.min(1, (t - start) / ms)
+    const e = 1 - Math.pow(1 - k, 3)
+    useUi.getState().setCamera({
+      x: from.x + (target.x - from.x) * e,
+      y: from.y + (target.y - from.y) * e,
+      zoom: from.zoom + (target.zoom - from.zoom) * e,
+    })
+    if (k < 1) requestAnimationFrame(step)
+  }
+  requestAnimationFrame(step)
+}
+
+/**
+ * Fill the view with the content for a dropped strip: top/bottom fit the full width
+ * (content anchored near that edge), left/right fit the full height (content anchored
+ * to that side). From then on the content stays fitted along that axis.
+ */
+export function dockCamera(zone: DockZone) {
+  const el = canvasEl.current
+  if (!el) return
+  const nodes = useDoc.getState().nodes
+  const rects = Object.values(nodes).map((s) => pageAABB(nodes, s))
+  const b = boundsOfRects(rects)
+  const cw = el.clientWidth
+  const ch = el.clientHeight
+  if (!b || (b.w <= 0 && b.h <= 0)) {
+    tweenCamera({ x: cw / 2, y: ch / 2, zoom: 1 })
+    return
+  }
+  const pad = 24
+  const anchor = DOCK_INSET + DOCK_STRIP + 8
+  if (zone === 'top' || zone === 'bottom') {
+    const zoom = clampZoom(Math.min(4, (cw - pad * 2) / b.w))
+    const x = (cw - b.w * zoom) / 2 - b.x * zoom
+    const y = zone === 'top' ? anchor - b.y * zoom : ch - anchor - b.h * zoom - b.y * zoom
+    tweenCamera({ x, y, zoom })
+  } else {
+    const zoom = clampZoom(Math.min(4, (ch - pad * 2) / b.h))
+    const y = (ch - b.h * zoom) / 2 - b.y * zoom
+    const x = zone === 'left' ? anchor - b.x * zoom : cw - anchor - b.w * zoom - b.x * zoom
+    tweenCamera({ x, y, zoom })
+  }
 }
 
 export function resetZoom100() {

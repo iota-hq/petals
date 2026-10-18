@@ -16,6 +16,7 @@ import { useUi, type Tool } from '@/store/uiStore'
 import { useDoc } from '@/store/docStore'
 import { Hint, TooltipProvider } from '@/components/ui/tooltip'
 import { FRAME_PRESETS, addFramePreset, redo, undo } from './commands'
+import { IconDragCanvas } from './proIcons'
 
 const tools: Array<{ id: Tool; icon: typeof Square; label: string; key: string; dividerAfter?: boolean }> = [
   { id: 'select', icon: MousePointer2, label: 'Move', key: 'V' },
@@ -31,6 +32,7 @@ const tools: Array<{ id: Tool; icon: typeof Square; label: string; key: string; 
 export function Toolbar() {
   const tool = useUi((s) => s.tool)
   const gesture = useUi((s) => s.gesture?.kind)
+  const dockZones = useUi((s) => s.dockZones)
   const canUndo = useDoc((s) => s.past.length > 0)
   const canRedo = useDoc((s) => s.future.length > 0)
   const [frameMenu, setFrameMenu] = useState(false)
@@ -153,6 +155,21 @@ export function Toolbar() {
               className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30"
             >
               <Redo2 size={15} />
+            </button>
+          </Hint>
+          <Hint label="Drag canvas to fill the screen" side="top">
+            <button
+              disabled={gesture != null}
+              aria-label="Drag canvas to fill the screen"
+              onClick={() => useUi.getState().setDockZones(!useUi.getState().dockZones)}
+              className={
+                'flex size-8 items-center justify-center rounded-lg transition-colors ' +
+                (dockZones
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-accent hover:text-foreground')
+              }
+            >
+              <IconDragCanvas size={15} />
             </button>
           </Hint>
         </div>

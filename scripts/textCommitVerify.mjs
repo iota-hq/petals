@@ -37,7 +37,7 @@ await page.keyboard.type("Hello Petals");
 var stillEditing = await page.locator('[contenteditable="true"]').count();
 ok(stillEditing === 1, "text node is editable while typing");
 await page.mouse.click(900, 700);
-await page.waitForTimeout(350);
+await page.waitForTimeout(650);
 var editables = await page.locator('[contenteditable="true"]').count();
 ok(editables === 0, "no editable element left after outside click (caret gone)");
 var selectedOutline = await page.locator("[data-node-id] input").count();

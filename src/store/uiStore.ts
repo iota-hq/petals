@@ -63,8 +63,11 @@ interface UiState {
   clipboard: string | null
   /** When set, the layers panel opens the row's inline rename (context-menu "Rename"). */
   renameRequest: string | null
+  /** Drag-to-fill mode: canvas pans freely and release over an edge strip fills it (Toolbar). */
+  dockZones: boolean
 
   setTool: (t: Tool) => void
+  setDockZones: (v: boolean) => void
   setCamera: (c: Camera) => void
   setSelection: (ids: string[]) => void
   toggleSelection: (id: string) => void
@@ -104,8 +107,10 @@ export const useUi = create<UiState>((set) => ({
   canvasBg: initialCanvasBg(),
   clipboard: null,
   renameRequest: null,
+  dockZones: false,
 
   setTool: (tool) => set({ tool }),
+  setDockZones: (dockZones) => set({ dockZones }),
   setCamera: (camera) => set({ camera }),
   setSelection: (selection) => set({ selection, editingText: null }),
   toggleSelection: (id) =>
