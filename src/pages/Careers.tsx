@@ -6,7 +6,7 @@ import { pillLight } from '@/components/PageMenu'
 
 const easeOut = [0.22, 1, 0.36, 1] as const
 
-const ROLES = ['Storyboarder', 'Growth', 'Something else'] as const
+const ROLES = ['Storyboarder', 'Growth'] as const
 const ENGAGEMENT = ['Freelance', 'Full-time', 'Part-time'] as const
 
 const fieldCls =
