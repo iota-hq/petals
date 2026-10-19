@@ -31,6 +31,15 @@ await page.evaluate(() => {
 });
 await page.goto("http://localhost:5173/board/fonttest1");
 await page.waitForTimeout(900);
+var waitDoc = async () => {
+  for (let i = 0;i < 20; i++) {
+    const raw = await page.evaluate(() => localStorage.getItem("petal.doc.v1.fonttest1"));
+    if (raw)
+      return JSON.parse(raw);
+    await page.waitForTimeout(150);
+  }
+  return { nodes: {} };
+};
 await page.keyboard.press("t");
 await page.mouse.click(500, 400);
 await page.waitForTimeout(200);
@@ -43,43 +52,84 @@ ok(await section("Outline").count() > 0, "Outline section present for text");
 ok(await section("Fill").count() > 0, "Fill section present for text");
 ok(await section("Shadow").count() > 0, "Shadow section present for text");
 console.log("— outline round-trip on text —");
-var hasStroke = await page.evaluate(() => {
-  const raw = localStorage.getItem("petal.doc.v1.fonttest1");
-  const nodes = JSON.parse(raw).nodes;
-  return Object.values(nodes).some((s) => s.type === "text" && s.stroke);
-});
+var hasStroke = Object.values((await waitDoc()).nodes).some((s) => s.type === "text" && s.stroke);
 if (!hasStroke) {
   const outlineRow = page.locator("aside div", { hasText: /^Outline\s*$/ }).last();
   await outlineRow.locator("button").last().click();
   await page.waitForTimeout(500);
 }
-var strokeAfterAdd = await page.evaluate(() => {
-  const raw = localStorage.getItem("petal.doc.v1.fonttest1");
-  const nodes = JSON.parse(raw).nodes;
-  return Object.values(nodes).map((s) => s.stroke).find(Boolean);
-});
+var strokeAfterAdd = Object.values((await waitDoc()).nodes).map((s) => s.stroke).find(Boolean);
 ok(!!strokeAfterAdd, "outline row activation writes stroke onto the text shape");
 ok(strokeAfterAdd === "#d9d9d9", "added stroke uses the border color token");
 await page.screenshot({ path: "test-artifacts/text-panel.png" });
+console.log("— a text box hugs its own text —");
+var box = async () => {
+  await page.waitForTimeout(600);
+  const nodes = (await waitDoc()).nodes;
+  return Object.values(nodes).find((s) => s.type === "text");
+};
+var born = await box();
+ok(born?.autoWidth === true, "a new text opens hugging its text, not as a fixed 320px box");
+ok(!!born && born.w > 40 && born.w < 300, `and is only as wide as what was typed (${Math.round(born?.w ?? 0)}px)`);
+ok(!!born && born.h < 60, `one line tall (${Math.round(born?.h ?? 0)}px)`);
+var at = await page.evaluate((id) => {
+  const el = document.querySelector(`[data-node-id="${id}"]:not([data-handle])`);
+  const r = el.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+}, born.id);
+await page.mouse.dblclick(at.x, at.y);
+await page.waitForTimeout(150);
+await page.mouse.dblclick(at.x, at.y);
+await page.waitForTimeout(300);
+ok(await page.locator('[contenteditable="true"]').count() === 1, "a double-click on a text enters inline editing");
+await page.keyboard.press("End");
+await page.keyboard.press("Enter");
+await page.keyboard.type("and a much longer second line");
+await page.waitForTimeout(200);
+var typing = await box();
+ok(!!typing && typing.h > (born?.h ?? 0) * 1.6, `the box grows while the second line is typed (${Math.round(typing?.h ?? 0)}px)`);
+await page.keyboard.press("Escape");
+var two = await box();
+ok(two?.text === `Hello Petals
+and a much longer second line`, `Enter starts a new line (${JSON.stringify(two?.text)})`);
+ok(!!two && two.h > (born?.h ?? 0) * 1.6, `and the box is two lines tall (${Math.round(two?.h ?? 0)}px)`);
+ok(!!two && two.w > (born?.w ?? 0) + 40, `its width follows the longer line (${Math.round(born?.w ?? 0)} → ${Math.round(two?.w ?? 0)}px)`);
+var handle = page.locator(`[data-handle="e"][data-node-id="${two.id}"]`);
+var hb = await handle.boundingBox();
+await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+await page.mouse.down();
+await page.mouse.move(hb.x + hb.width / 2 + 120, hb.y + hb.height / 2, { steps: 6 });
+await page.mouse.up();
+var sized = await box();
+ok(!sized?.autoWidth, "dragging a side handle clears the hug");
+ok(!!sized && sized.w > (two?.w ?? 0) + 80, `and the width the person chose is kept (${Math.round(sized?.w ?? 0)}px)`);
 console.log("— font picker —");
-var trigger = page.locator('aside button[aria-haspopup="listbox"]').first();
+var trigger = page.locator('aside button[aria-label="Font family"]').first();
 await trigger.click();
 await page.waitForTimeout(1800);
-var search = page.locator('[role="listbox"] input');
+var panel = page.locator('[role="dialog"][aria-label="Fonts"]');
+ok(await panel.count() === 1, "the font list opens as a panel");
+var search = page.getByLabel("Search fonts");
 ok(await search.count() === 1, "font list opens with search");
+ok(await search.getAttribute("placeholder") === "Search fonts", "the search box is labelled like the library’s");
+var geom = await page.evaluate(() => {
+  const p = document.querySelector('[role="dialog"][aria-label="Fonts"]').getBoundingClientRect();
+  const bar = document.querySelector("[data-toolbar]").getBoundingClientRect();
+  const aside = document.querySelector("[data-props-panel]").getBoundingClientRect();
+  return { p: { l: p.left, t: p.top, r: p.right, b: p.bottom, w: p.width, h: p.height }, bar: { t: bar.top }, aside: aside.left, vw: innerWidth, vh: innerHeight };
+});
+ok(geom.p.b < geom.bar.t, "it sits above the toolbar");
+ok(Math.abs(geom.p.r - (geom.aside - 8)) < 2, "its right edge is flush with the properties sidebar");
+ok(geom.p.b > geom.vh - 140, "it is anchored to the bottom");
+ok(geom.p.w === 256 && Math.abs(geom.p.h - 380) < 2, `the same box as the asset library, clear of the canvas (${Math.round(geom.p.w)}×${Math.round(geom.p.h)})`);
 await search.fill("Inter");
 await page.waitForTimeout(250);
-var rows = page.locator('[role="listbox"] [role="option"]', { hasText: "Inter" });
+var rows = page.locator('[role="listbox"][aria-label="Fonts"] [role="option"]', { hasText: "Inter" });
 ok(await rows.count() > 0, `search finds Inter (${await rows.count()} rows)`);
 await page.screenshot({ path: "test-artifacts/font-picker.png" });
 await rows.first().click();
 await page.waitForTimeout(700);
-var applied = await page.evaluate(() => {
-  const raw = localStorage.getItem("petal.doc.v1.fonttest1");
-  const nodes = JSON.parse(raw).nodes;
-  const t = Object.values(nodes).find((s) => s.type === "text");
-  return t?.fontFamily ?? "";
-});
+var applied = Object.values((await waitDoc()).nodes).find((s) => s.type === "text")?.fontFamily ?? "";
 ok(applied.includes("Inter"), `fontFamily applied (${applied})`);
 console.log(`console/page errors: ${errors.length}`);
 ok(errors.length === 0, "no console/page errors");

@@ -4,7 +4,7 @@ import { lineEnds, lineBox } from '@/model/geometry'
 import { filtersToCss, fillToCss, radiusToCss, shapeTransform, shadowToCss } from '@/model/styles'
 import { useDoc } from '@/store/docStore'
 import { useUi } from '@/store/uiStore'
-import { commitTextEdit, setIntrinsicHeight, typeLive } from './commands'
+import { commitTextEdit, readText, setIntrinsicSize, typeLive } from './commands'
 
 export type GroupMap = Map<string | null, Shape[]>
 
@@ -221,13 +221,20 @@ function TextView({ s }: { s: Shape }) {
   const ref = useRef<HTMLDivElement>(null)
   const editingRef = useRef(false)
   editingRef.current = editing
+  const autoWidth = s.autoWidth === true
 
-  // auto-height while not editing (scrollHeight is already in page units)
+  // Text sizes itself: its height always, and its width too when the box hugs its text. The
+  // stored values are what the overlays, hit-testing and export use, so they follow the
+  // content rather than the other way round. Demanded from the DOM, so it is right after a
+  // webfont swaps in as well. `scrollWidth`/`scrollHeight` are layout values, i.e. already in
+  // page units, unlike `getBoundingClientRect`.
   useLayoutEffect(() => {
     const el = ref.current
-    if (!el || editing) return
+    if (!el) return
     const h = el.scrollHeight
-    if (Math.abs(h - s.h) > 0.75) setIntrinsicHeight(s.id, h)
+    // An empty text box can measure as nothing tall — keep the height it was given — but its
+    // width is still the caret's, never the 320px default it was created with.
+    setIntrinsicSize(s.id, el.scrollWidth, h > 0 ? h : s.h)
   })
 
   useEffect(() => {
@@ -244,12 +251,19 @@ function TextView({ s }: { s: Shape }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing])
 
+  /** Read the DOM back into the doc. `onInput` is the only path: the browser marks the line
+   *  breaks itself, and `readText` turns them into the string we store. */
+  const read = () => {
+    const el = ref.current
+    if (el) typeLive(s.id, readText(el))
+  }
+
   const finish = () => {
     const el = ref.current
     if (!el || !editingRef.current) return
     // the outside-click commit in CanvasRoot may have already ended the edit
     if (useUi.getState().editingText !== s.id) return
-    const text = el.textContent ?? ''
+    const text = readText(el)
     const doc = useDoc.getState()
     if (!text.trim()) {
       doc.deleteShapes([s.id], 'Edit text')
@@ -268,7 +282,8 @@ function TextView({ s }: { s: Shape }) {
       style={{
         left: s.x,
         top: s.y,
-        width: s.w,
+        // an auto-width box is laid out by its own text, never wrapped, and read back below
+        width: autoWidth ? 'max-content' : s.w,
         opacity: s.opacity,
         color: s.color ?? '#ececf1',
         fontSize: s.fontSize ?? 24,
@@ -292,16 +307,21 @@ function TextView({ s }: { s: Shape }) {
           : {}),
       }}
       {...(editing ? { contentEditable: true, suppressContentEditableWarning: true } : {})}
-      onInput={editing ? () => typeLive(s.id, ref.current?.textContent ?? '') : undefined}
-      onKeyDown={editing
-        ? (ev) => {
-            if (ev.key === 'Escape' || (ev.key === 'Enter' && !ev.shiftKey)) {
-              ev.preventDefault()
-              ev.stopPropagation()
-              finish()
+      onInput={editing ? read : undefined}
+      onKeyDown={
+        editing
+          ? (ev) => {
+              // Escape ends the edit; Enter is left to the browser, which starts a new line.
+              // A text box is not a form field: there is nothing to submit, and a text box
+              // that cannot hold a second line is a worse text box.
+              if (ev.key === 'Escape') {
+                ev.preventDefault()
+                ev.stopPropagation()
+                finish()
+              }
             }
-          }
-        : undefined}
+          : undefined
+      }
       onBlur={editing ? finish : undefined}
     >
       {editing ? undefined : (s.text ?? '')}

@@ -81,8 +81,13 @@ const nodeSchema = z.object({
   color: z.string().optional(),
   lineHeight: z.number().optional(),
   letterSpacing: z.number().optional(),
+  autoWidth: z.boolean().optional(),
   src: z.string().optional(),
   fit: z.enum(['cover', 'contain']).optional(),
+  // free-form to the schema (validated at the edges that write them): a pattern's params
+  // and an inserted logo's markup are both opaque to everything but the panels that own them
+  pattern: z.record(z.string(), z.unknown()).optional(),
+  logo: z.record(z.string(), z.unknown()).optional(),
 })
 
 export const docSchema = z.object({

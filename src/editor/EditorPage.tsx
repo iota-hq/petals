@@ -3,6 +3,7 @@ import { ChevronLeft, PanelLeft, PanelRight } from 'lucide-react'
 import { useDoc } from '@/store/docStore'
 import { useUi } from '@/store/uiStore'
 import { afterLoadCamera } from './commands'
+import { startMcpBridge } from './mcpBridge'
 import { go } from '@/App'
 import { useKeyboard } from './useKeyboard'
 import { Toolbar } from './Toolbar'
@@ -26,6 +27,8 @@ export default function EditorPage({ projectId }: { projectId: string }) {
     // small screens start with both sidebars collapsed (they open as overlays)
     if (window.innerWidth < 1024) useUi.setState({ showLeft: false, showRight: false })
     afterLoadCamera()
+    // inert unless the URL carries the ?mcp flag (see startMcpBridge)
+    return startMcpBridge(projectId)
   }, [projectId])
 
   return (

@@ -12,26 +12,56 @@ import {
   AlignJustify,
   AlignStartHorizontal,
   AlignStartVertical,
+  ArrowLeftRight,
+  ArrowUpDown,
+  Blend,
   Check,
   ChevronDown,
   Circle,
+  CircleDashed,
+  Columns3,
+  Diamond,
+  Droplet,
   Expand,
   Frame as FrameIcon,
+  Gauge,
+  Grid2x2,
+  Hash,
+  Hexagon,
   Image as ImageIcon,
+  Maximize2,
   Minimize2,
   Minus,
   Minus as LineIcon,
   Minus as RemoveIcon,
+  Palette,
   PanelRight,
+  PaintBucket,
+  PenLine,
+  Pipette,
   Plus,
+  Repeat2,
+  RotateCcw,
+  RotateCw,
+  Rows3,
+  Scaling,
+  Sparkles,
   Square,
+  StretchHorizontal,
+  TrendingUp,
   Type,
+  X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { nanoid } from 'nanoid'
-import type { Filters, Gradient, GradientStop, ImageFill, Margin, Shape, ShapePatch, ShadowEntry, ShadowKind, ShadowStyle, ShapeType } from '@/model/types'
+import type { Filters, Gradient, GradientStop, ImageFill, LogoSvg, Margin, Shape, ShapePatch, ShadowEntry, ShadowKind, ShadowStyle, ShapeType } from '@/model/types'
 import { pageAABB, selectionRoots, boundsOfRects } from '@/model/geometry'
 import { fillToCss, radiusToCss } from '@/model/styles'
+import { MOTIFS } from '@/lib/patterns/registry'
+import { motifThumb, patternFill, patternFor } from '@/lib/patterns/fill'
+import { resolveInk } from '@/lib/patterns/color'
+import type { PatternParams } from '@/lib/patterns/types'
+import { recolorSvg, svgColors, svgDataUrl } from '@/lib/svg'
 import { useDoc, type Tx } from '@/store/docStore'
 import { useUi, DEFAULT_CANVAS_BG, setZoomAroundCenter } from '@/store/uiStore'
 import { fileToImageSrc, addImageFile, alignSelection, canvasEl, nudge, setProps, type AlignEdge } from './commands'
@@ -124,7 +154,7 @@ function Section({
       if (openProp) {
         indicator = (
           <Hint label="Remove">
-            <button onClick={onRemove} className="cursor-pointer text-muted-foreground hover:text-foreground">
+            <button aria-label={`Remove ${title}`} onClick={onRemove} className="cursor-pointer text-muted-foreground hover:text-foreground">
               <Minus size={13} />
             </button>
           </Hint>
@@ -132,7 +162,7 @@ function Section({
       } else {
         indicator = (
           <Hint label="Add">
-            <button onClick={onAdd} className="cursor-pointer text-muted-foreground hover:text-foreground">
+            <button aria-label={`Add ${title}`} onClick={onAdd} className="cursor-pointer text-muted-foreground hover:text-foreground">
               <Plus size={13} />
             </button>
           </Hint>
@@ -141,7 +171,7 @@ function Section({
     } else {
       indicator = (
         <Hint label={open ? 'Collapse' : 'Expand'}>
-          <button onClick={toggle} className="cursor-pointer text-muted-foreground hover:text-foreground">
+          <button aria-label={`${open ? 'Collapse' : 'Expand'} ${title}`} onClick={toggle} className="cursor-pointer text-muted-foreground hover:text-foreground">
             {open ? <Minus size={13} /> : <Plus size={13} />}
           </button>
         </Hint>
@@ -241,6 +271,8 @@ interface NumFieldProps {
   /** trailing unit rendered after the value (e.g. percent) */
   unit?: string
   icon?: ReactNode
+  /** accessible name for the box: the row is icon-led, so there is no visible label to borrow */
+  ariaLabel?: string
   value: number
   /** displayed = stored × scale (e.g. opacity stored 0..1 → scale 100) */
   scale?: number
@@ -266,6 +298,7 @@ function NumField({
   label,
   unit,
   icon,
+  ariaLabel,
   value,
   scale = 1,
   step = 1,
@@ -282,6 +315,14 @@ function NumField({
   const shown = live ?? value
   const display = Math.round(shown * scale * 100) / 100
   const canScrub = !disabled && onLive != null
+  /**
+   * A finished drag must not leave the field in edit mode. The handle sits inside a `<label>`,
+   * so the click that ends a scrub is forwarded by the label to the input, which focuses and
+   * latches `editing` — the typed text then stops following the store, and the field freezes
+   * while the shape keeps moving. Cancelling that one click keeps the text live; clicking the
+   * handle without dragging still focuses the field the way the label intends.
+   */
+  const dragged = useRef(false)
 
   const startScrub = (e: React.PointerEvent) => {
     if (!canScrub || e.button !== 0) return
@@ -289,9 +330,13 @@ function NumField({
     const sx = e.clientX
     const startStored = value
     let moved = false
+    dragged.current = false
     const move = (ev: PointerEvent) => {
       const stored = clampField(startStored + (ev.clientX - sx) * step, min, max)
-      if (Math.abs(ev.clientX - sx) > 2) moved = true
+      if (Math.abs(ev.clientX - sx) > 2) {
+        moved = true
+        dragged.current = true
+      }
       if (!moved) return
       setLive(stored)
       onLive?.(stored)
@@ -310,6 +355,11 @@ function NumField({
 
   return (
     <label
+      onClick={(e) => {
+        if (!dragged.current) return
+        dragged.current = false
+        e.preventDefault()
+      }}
       className={
         plain
           ? 'flex min-w-0 flex-1 items-center gap-1'
@@ -342,6 +392,7 @@ function NumField({
       <Input
         type="text"
         inputMode="decimal"
+        aria-label={ariaLabel}
         disabled={disabled}
         className="h-6 w-full min-w-0 border-0 bg-transparent px-0 text-[13px] font-medium shadow-none focus-visible:ring-0"
         value={editing ?? String(display)}
@@ -383,10 +434,11 @@ function NumField({
 
 /* ------------------------------ color ------------------------------ */
 
-function ColorButton({ color, onClick, sm }: { color: string; onClick: (e: React.MouseEvent) => void; sm?: boolean }) {
+function ColorButton({ color, onClick, sm, label }: { color: string; onClick: (e: React.MouseEvent) => void; sm?: boolean; label?: string }) {
   return (
     <button
       onClick={onClick}
+      aria-label={label ?? 'Colour'}
       className={
         (sm ? 'h-4 w-5 rounded' : 'h-6 w-8 shrink-0 rounded-md') +
         ' shrink-0 cursor-pointer border border-border ring-1 ring-inset ring-black/20'
@@ -479,6 +531,7 @@ function ColorPopover({
       <div className="mt-2 flex items-center justify-between gap-1.5">
         <span className="text-[10px] font-normal text-muted-foreground">Hex</span>
         <Input
+          aria-label="Hex"
           className="h-6 w-24 bg-[#2b2b2b] font-mono text-[11px] uppercase"
           value={hex}
           onChange={(e) => setHex(e.target.value)}
@@ -709,11 +762,11 @@ function MiniSwitch({ checked, onChange }: { checked: boolean; onChange: (v: boo
 /* ------------------------------ styles: fill / shadow / filters / margin ------------------------------ */
 
 /** Small swatch that opens a color popover; used by gradient stops and shadow colors. */
-function SwatchButton({ color, onChange }: { color: string; onChange: (c: string) => void }) {
+function SwatchButton({ color, onChange, label }: { color: string; onChange: (c: string) => void; label?: string }) {
   const pop = useColorPop(color || '#000000')
   return (
     <div className="relative inline-flex items-center">
-      <ColorButton color={color} onClick={(e) => pop.toggle(e)} />
+      <ColorButton color={color} onClick={(e) => pop.toggle(e)} label={label} />
       {pop.open && (
         <ColorPopover
           popoverRef={pop.ref}
@@ -1488,12 +1541,12 @@ function MarginSection({ s }: { s: Shape }) {
   return (
     <Section title="Margin">
       <Row>
-        <NumField icon={<IconMargin dir="top" />} min={0} value={m.t} onLive={(v) => patchLive({ t: Math.max(0, v) })} onEnd={end} onCommit={(v) => patch({ t: Math.max(0, v) })} />
-        <NumField icon={<IconMargin dir="right" />} min={0} value={m.r} onLive={(v) => patchLive({ r: Math.max(0, v) })} onEnd={end} onCommit={(v) => patch({ r: Math.max(0, v) })} />
+        <NumField ariaLabel="Margin top" icon={<IconMargin dir="top" />} value={m.t} onLive={(v) => patchLive({ t: v })} onEnd={end} onCommit={(v) => patch({ t: v })} />
+        <NumField ariaLabel="Margin right" icon={<IconMargin dir="right" />} value={m.r} onLive={(v) => patchLive({ r: v })} onEnd={end} onCommit={(v) => patch({ r: v })} />
       </Row>
       <Row>
-        <NumField icon={<IconMargin dir="bottom" />} min={0} value={m.b} onLive={(v) => patchLive({ b: Math.max(0, v) })} onEnd={end} onCommit={(v) => patch({ b: Math.max(0, v) })} />
-        <NumField icon={<IconMargin dir="left" />} min={0} value={m.l} onLive={(v) => patchLive({ l: Math.max(0, v) })} onEnd={end} onCommit={(v) => patch({ l: Math.max(0, v) })} />
+        <NumField ariaLabel="Margin bottom" icon={<IconMargin dir="bottom" />} value={m.b} onLive={(v) => patchLive({ b: v })} onEnd={end} onCommit={(v) => patch({ b: v })} />
+        <NumField ariaLabel="Margin left" icon={<IconMargin dir="left" />} value={m.l} onLive={(v) => patchLive({ l: v })} onEnd={end} onCommit={(v) => patch({ l: v })} />
       </Row>
     </Section>
   )
@@ -1668,6 +1721,554 @@ function TypographySection({
 
 const clampF = (v: number) => Math.min(4, Math.max(0.5, v))
 
+/* ------------------------------ patterns & logos ------------------------------ */
+
+/**
+ * Pattern and logo settings, built from the same two parts as the rest of this panel: a
+ * `NumField` — drag the icon to scrub, click the value to type — and a row of icon buttons
+ * where a mode has to be chosen. No sliders and no text labels: the icon says what a field is
+ * for, and the tooltip says it again on hover. The groups are the engine's own: the grid a
+ * motif is laid out on, the ink it is drawn with, the fade over it, and the alternates.
+ */
+
+/** A row of mutually exclusive icon buttons — the panel's way of asking which of several. */
+function IconChoice<T extends string>({
+  value,
+  options,
+  onChange,
+  ariaLabel,
+}: {
+  value: T
+  options: Array<{ id: T; icon: LucideIcon; tip: string }>
+  onChange: (v: T) => void
+  ariaLabel: string
+}) {
+  return (
+    <div role="group" aria-label={ariaLabel} className="flex min-w-0 flex-1 gap-1.5">
+      {options.map(({ id, icon: I, tip }) => (
+        <Hint key={id} label={tip}>
+          <button
+            aria-label={tip}
+            aria-pressed={value === id}
+            onClick={() => onChange(id)}
+            className={
+              'flex h-7 min-w-0 flex-1 cursor-pointer items-center justify-center rounded-md transition-colors ' +
+              (value === id ? 'bg-primary/20 text-primary' : 'bg-[#2b2b2b] text-muted-foreground hover:text-foreground')
+            }
+          >
+            <I size={13} />
+          </button>
+        </Hint>
+      ))}
+    </div>
+  )
+}
+
+/** A heading inside a section, so a long set of controls reads as groups, not as a list. */
+function GroupLabel({ icon: I, children }: { icon: LucideIcon; children: ReactNode }) {
+  return (
+    <p className="flex items-center gap-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/55">
+      <I size={11} />
+      {children}
+    </p>
+  )
+}
+
+/** A colour in the panel's idiom: swatch, value, and a way back when the value is optional. */
+function SwatchRow({
+  label,
+  color,
+  onChange,
+  onClear,
+}: {
+  label: string
+  color: string
+  onChange: (c: string) => void
+  onClear?: () => void
+}) {
+  return (
+    <span className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md bg-[#2b2b2b] px-1.5 py-1">
+      <SwatchButton label={label} color={color} onChange={onChange} />
+      <span className="min-w-0 flex-1 truncate font-mono text-[11px] uppercase text-foreground/85">
+        {color.replace(/^#/, '')}
+      </span>
+      {onClear && (
+        <button
+          aria-label={`Clear ${label}`}
+          onClick={onClear}
+          className="shrink-0 cursor-pointer text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <RotateCcw size={11} />
+        </button>
+      )}
+    </span>
+  )
+}
+
+/**
+ * Pattern: the generative fill's own settings. Everything the motif engine takes except
+ * motion, which this app has no use for. Editing anything re-renders the stored SVG from the
+ * params and swaps the shape's fill, so the canvas keeps rendering a plain image and never
+ * runs the engine at paint time.
+ */
+function PatternSection({
+  s,
+  live,
+  end,
+  commit,
+}: {
+  s: Shape
+  live: (id: string, patch: ShapePatch, label: string) => void
+  end: () => void
+  commit: (patch: ShapePatch, label: string) => void
+}) {
+  const p = s.pattern
+  /** A pattern applied to a coloured shape takes that colour; a fresh one takes the motif's. */
+  const borrow = (fill: unknown) => (typeof fill === 'string' ? { bg: fill } : {})
+  const withParams = (fields: Partial<PatternParams>): ShapePatch => {
+    const next: PatternParams = { ...(p as PatternParams), ...fields }
+    return { pattern: next, fill: patternFill(next, s.w, s.h) }
+  }
+  const set = (fields: Partial<PatternParams>, label: string) => commit(withParams(fields), label)
+  const scrub = (fields: Partial<PatternParams>, label: string) => live(s.id, withParams(fields), label)
+
+  const add = () => {
+    const params = patternFor('honeycomb', 1, borrow(s.fill))
+    commit({ pattern: params, fill: patternFill(params, s.w, s.h) }, 'Add pattern')
+  }
+  // Un-patterning hands the shape back a solid colour rather than nothing: the pattern's own
+  // backdrop, so it reads as a change of mind and not as a hole in the design.
+  const remove = () => p && commit({ pattern: undefined, fill: p.bg }, 'Remove pattern')
+
+  /** One numeric param. `tx` is the undo label; `label` is also its accessible name. */
+  const field = (o: {
+    label: string
+    tx: string
+    value: number
+    fields: (v: number) => Partial<PatternParams>
+    icon?: ReactNode
+    text?: string
+    unit?: string
+    min?: number
+    max?: number
+    step?: number
+    scale?: number
+  }) => (
+    <NumField
+      key={o.label}
+      ariaLabel={o.label}
+      icon={o.icon}
+      label={o.text}
+      unit={o.unit}
+      min={o.min}
+      max={o.max}
+      step={o.step ?? 1}
+      scale={o.scale ?? 1}
+      value={o.value}
+      onLive={(v) => scrub(o.fields(v), o.tx)}
+      onEnd={end}
+      onCommit={(v) => set(o.fields(v), o.tx)}
+    />
+  )
+
+  const ink = p ? resolveInk(p.bg, p.ink, p.autoTint, p.tint) : '#000000'
+
+  return (
+    <Section title="Pattern" open={!!p} onAdd={add} onRemove={remove}>
+      {p && (
+        <>
+          {/* The motifs themselves need no words: a thumbnail is the clearer name. */}
+          <div className="scrollbar-auto -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+            {MOTIFS.map((m) => (
+              <Hint key={m.id} label={m.name}>
+                <button
+                  aria-label={m.name}
+                  aria-pressed={m.id === p.motif}
+                  onClick={() => {
+                    const next = patternFor(m.id, 1, borrow(p.bg))
+                    commit({ pattern: next, fill: patternFill(next, s.w, s.h) }, 'Motif')
+                  }}
+                  className={
+                    'size-9 shrink-0 cursor-pointer overflow-hidden rounded-md border transition-colors ' +
+                    (m.id === p.motif ? 'border-primary' : 'border-white/10 hover:border-white/30')
+                  }
+                >
+                  <img src={motifThumb(m.id, 36, 2)} alt="" draggable={false} className="size-full object-cover" />
+                </button>
+              </Hint>
+            ))}
+          </div>
+
+          <GroupLabel icon={Grid2x2}>Grid</GroupLabel>
+          <Row>
+            {field({
+              label: 'Zoom',
+              tx: 'Pattern zoom',
+              icon: <Maximize2 size={12} />,
+              value: p.scale,
+              min: 8,
+              max: 320,
+              unit: 'px',
+              fields: (v) => ({ scale: v }),
+            })}
+            {field({
+              label: 'Motif size',
+              tx: 'Motif size',
+              icon: <Scaling size={12} />,
+              value: p.motifScale * 100,
+              min: 15,
+              max: 160,
+              unit: '%',
+              fields: (v) => ({ motifScale: v / 100 }),
+            })}
+          </Row>
+          <Row>
+            {field({
+              label: 'Gap',
+              tx: 'Pattern gap',
+              icon: <StretchHorizontal size={12} />,
+              value: p.gap * 100,
+              min: 0,
+              max: 200,
+              unit: '%',
+              fields: (v) => ({ gap: v / 100 }),
+            })}
+            {field({
+              label: 'Detail',
+              tx: 'Pattern detail',
+              icon: <Hash size={12} />,
+              value: p.detail,
+              min: 1,
+              max: 6,
+              fields: (v) => ({ detail: Math.round(v) }),
+            })}
+          </Row>
+          <Row>
+            {/* Offsets are a lattice period wide at most: past that the pattern repeats itself. */}
+            {field({
+              label: 'Offset X',
+              tx: 'Pattern offset',
+              text: 'X',
+              value: p.offsetX,
+              min: 0,
+              max: Math.max(8, Math.round(p.scale)),
+              fields: (v) => ({ offsetX: v }),
+            })}
+            {field({
+              label: 'Offset Y',
+              tx: 'Pattern offset',
+              text: 'Y',
+              value: p.offsetY,
+              min: 0,
+              max: Math.max(8, Math.round(p.scale)),
+              fields: (v) => ({ offsetY: v }),
+            })}
+          </Row>
+          <Row>
+            {field({
+              label: 'Rotate',
+              tx: 'Pattern rotate',
+              icon: <RotateCw size={12} />,
+              value: p.rotation,
+              min: -180,
+              max: 180,
+              unit: '°',
+              fields: (v) => ({ rotation: v }),
+            })}
+            {field({
+              label: 'Twist',
+              tx: 'Motif twist',
+              icon: <RotateCcw size={12} />,
+              value: p.motifRotation,
+              min: -180,
+              max: 180,
+              unit: '°',
+              fields: (v) => ({ motifRotation: v }),
+            })}
+          </Row>
+
+          <GroupLabel icon={Palette}>Ink</GroupLabel>
+          <Row>
+            <SwatchRow label="Pattern ground" color={p.bg} onChange={(c) => set({ bg: c }, 'Pattern ground')} />
+            {/* Painting the ink by hand is the same decision as leaving the tint: one swatch. */}
+            <SwatchRow
+              label="Pattern ink"
+              color={ink}
+              onChange={(c) => set({ autoTint: false, ink: c }, 'Pattern ink')}
+            />
+          </Row>
+          <Row>
+            <IconChoice
+              ariaLabel="Pattern ink source"
+              value={p.autoTint ? 'auto' : 'custom'}
+              options={[
+                { id: 'auto', icon: Sparkles, tip: 'Derive ink from the ground' },
+                { id: 'custom', icon: Pipette, tip: 'Set ink by hand' },
+              ]}
+              // Switching to hand-set ink freezes whatever the tint was deriving, so the look
+              // holds still and the picker starts from the colour already on screen.
+              onChange={(v) => set(v === 'auto' ? { autoTint: true } : { autoTint: false, ink }, 'Pattern ink')}
+            />
+            {p.autoTint &&
+              field({
+                label: 'Tint',
+                tx: 'Pattern tint',
+                icon: <Blend size={12} />,
+                value: p.tint,
+                min: -0.5,
+                max: 0.5,
+                step: 0.01,
+                fields: (v) => ({ tint: v }),
+              })}
+          </Row>
+          <Row>
+            {field({
+              label: 'Opacity',
+              tx: 'Pattern opacity',
+              icon: <IconOpacity />,
+              value: p.opacity * 100,
+              min: 0,
+              max: 100,
+              unit: '%',
+              fields: (v) => ({ opacity: v / 100 }),
+            })}
+            {field({
+              label: 'Stroke',
+              tx: 'Pattern stroke',
+              icon: <IconStrokeWidth />,
+              value: p.strokeWidth,
+              min: 0.2,
+              max: 14,
+              step: 0.1,
+              fields: (v) => ({ strokeWidth: v }),
+            })}
+          </Row>
+          <Row>
+            {field({
+              label: 'Dash',
+              tx: 'Pattern dash',
+              icon: <Minus size={12} />,
+              value: p.dash,
+              min: 0,
+              max: 30,
+              step: 0.5,
+              fields: (v) => ({ dash: v }),
+            })}
+            <IconChoice
+              ariaLabel="Pattern paint"
+              value={p.fillMode}
+              options={[
+                { id: 'auto', icon: Sparkles, tip: 'Paint: let the motif decide' },
+                { id: 'stroke', icon: PenLine, tip: 'Paint: stroke only' },
+                { id: 'fill', icon: PaintBucket, tip: 'Paint: fill only' },
+              ]}
+              onChange={(v) => set({ fillMode: v }, 'Pattern paint')}
+            />
+          </Row>
+
+          <GroupLabel icon={Blend}>Fade</GroupLabel>
+          <Row>
+            {field({
+              label: 'Fade amount',
+              tx: 'Pattern fade',
+              icon: <Gauge size={12} />,
+              value: p.fade * 100,
+              min: 0,
+              max: 100,
+              unit: '%',
+              fields: (v) => ({ fade: v / 100 }),
+            })}
+            {/* A radial fade is placed by its outline, a ramp by its direction. */}
+            {p.fade > 0 && p.fadeMode !== 'radial' &&
+              field({
+                label: 'Fade direction',
+                tx: 'Fade direction',
+                icon: <ArrowUpDown size={12} />,
+                value: p.fadeAngle,
+                min: 0,
+                max: 315,
+                step: 45,
+                fields: (v) => ({ fadeAngle: v }),
+              })}
+          </Row>
+          {p.fade > 0 && (
+            <>
+              <Row>
+                <IconChoice
+                  ariaLabel="Fade mode"
+                  value={p.fadeMode}
+                  options={[
+                    { id: 'smooth', icon: TrendingUp, tip: 'Fade: soft ramp' },
+                    { id: 'hard', icon: Square, tip: 'Fade: hard edge' },
+                    { id: 'radial', icon: CircleDashed, tip: 'Fade: radial' },
+                  ]}
+                  onChange={(v) => set({ fadeMode: v }, 'Fade mode')}
+                />
+              </Row>
+              {p.fadeMode === 'radial' && (
+                <Row>
+                  <IconChoice
+                    ariaLabel="Fade outline"
+                    value={p.fadeShape}
+                    options={[
+                      { id: 'circle', icon: Circle, tip: 'Fade outline: circle' },
+                      { id: 'square', icon: Square, tip: 'Fade outline: square' },
+                      { id: 'diamond', icon: Diamond, tip: 'Fade outline: diamond' },
+                      { id: 'hexagon', icon: Hexagon, tip: 'Fade outline: hexagon' },
+                    ]}
+                    onChange={(v) => set({ fadeShape: v }, 'Fade outline')}
+                  />
+                </Row>
+              )}
+            </>
+          )}
+
+          <GroupLabel icon={Repeat2}>Alternate</GroupLabel>
+          <Row>
+            {field({
+              label: 'Alternate every',
+              tx: 'Pattern alternate',
+              icon: <Repeat2 size={12} />,
+              value: p.altEvery,
+              min: 0,
+              max: 4,
+              fields: (v) => ({ altEvery: Math.round(v) }),
+            })}
+            <SwatchRow
+              label="Alternate colour"
+              color={p.altColor ?? ink}
+              onChange={(c) => set({ altColor: c }, 'Alternate colour')}
+              onClear={p.altColor ? () => set({ altColor: null }, 'Alternate colour') : undefined}
+            />
+          </Row>
+          {p.altEvery > 0 && (
+            <>
+              <Row>
+                <IconChoice
+                  ariaLabel="Alternate mode"
+                  value={p.altMode}
+                  options={[
+                    { id: 'checker', icon: Grid2x2, tip: 'Alternate: checkerboard' },
+                    { id: 'columns', icon: Columns3, tip: 'Alternate: by column' },
+                    { id: 'rows', icon: Rows3, tip: 'Alternate: by row' },
+                  ]}
+                  onChange={(v) => set({ altMode: v }, 'Alternate mode')}
+                />
+              </Row>
+              <Row>
+                {field({
+                  label: 'Alternate opacity',
+                  tx: 'Alternate opacity',
+                  icon: <IconOpacity />,
+                  value: p.altOpacity * 100,
+                  min: 0,
+                  max: 100,
+                  unit: '%',
+                  fields: (v) => ({ altOpacity: v / 100 }),
+                })}
+                {field({
+                  label: 'Alternate size',
+                  tx: 'Alternate size',
+                  icon: <Scaling size={12} />,
+                  value: p.altScale * 100,
+                  min: 30,
+                  max: 160,
+                  unit: '%',
+                  fields: (v) => ({ altScale: v / 100 }),
+                })}
+              </Row>
+              <Row>
+                {field({
+                  label: 'Alternate twist',
+                  tx: 'Alternate twist',
+                  icon: <RotateCcw size={12} />,
+                  value: p.altRotate,
+                  min: -180,
+                  max: 180,
+                  unit: '°',
+                  fields: (v) => ({ altRotate: v }),
+                })}
+              </Row>
+            </>
+          )}
+        </>
+      )}
+    </Section>
+  )
+}
+
+/**
+ * Logo: an inserted SVG keeps its pristine markup alongside the rendered data URL, so a
+ * recolour is always applied to the original and edits never compound. One swatch per colour
+ * the artwork actually paints with — change a swatch and every part using it follows.
+ */
+function LogoSection({ s, commit }: { s: Shape; commit: (patch: ShapePatch, label: string) => void }) {
+  const logo = s.logo
+  if (!logo) return null
+  // Internal cache: the same markup is inspected at most once per session.
+  const colors = svgColors(logo.source)
+  const mono = !!logo.mono
+  const overridden = Object.keys(logo.palette ?? {}).length > 0
+  const repaint = (next: LogoSvg, label: string) =>
+    commit(
+      { logo: next, src: svgDataUrl(recolorSvg(next.source, { mono: next.mono, palette: next.palette })) },
+      label,
+    )
+
+  return (
+    <Section
+      title="Logo"
+      subtitle={mono ? 'mono' : overridden ? 'custom' : colors.length === 1 ? '1 colour' : `${colors.length} colours`}
+    >
+      <Row>
+        <IconChoice
+          ariaLabel="Logo colour"
+          value={mono ? 'mono' : 'original'}
+          options={[
+            { id: 'original', icon: Palette, tip: 'Its own colours' },
+            { id: 'mono', icon: Droplet, tip: 'Paint it one colour' },
+          ]}
+          onChange={(v) =>
+            v === 'mono'
+              ? repaint({ source: logo.source, mono: colors[0] ?? '#000000' }, 'Logo colour')
+              : repaint({ source: logo.source }, 'Logo colours')
+          }
+        />
+      </Row>
+      {mono ? (
+        <Row>
+          <SwatchRow
+            label="Logo ink"
+            color={logo.mono ?? '#000000'}
+            onChange={(c) => repaint({ ...logo, mono: c }, 'Logo colour')}
+          />
+        </Row>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {colors.map((original) => (
+            <span key={original} className="w-[calc(50%-3px)]">
+              <SwatchRow
+                label={`Logo colour ${original}`}
+                color={logo.palette?.[original] ?? original}
+                onChange={(c) => repaint({ ...logo, palette: { ...(logo.palette ?? {}), [original]: c } }, 'Logo colour')}
+              />
+            </span>
+          ))}
+          {overridden && (
+            <button
+              aria-label="Reset logo colours"
+              onClick={() => repaint({ source: logo.source }, 'Reset logo colours')}
+              className="flex cursor-pointer items-center gap-1.5 rounded-md bg-[#2b2b2b] px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <RotateCcw size={11} />
+              reset
+            </button>
+          )}
+        </div>
+      )}
+    </Section>
+  )
+}
 
 /**
  * Corner radius row: one uniform field with an expand toggle that reveals all four corners.
@@ -1759,6 +2360,7 @@ function AlignRow() {
         <Hint key={edge} label={tip}>
           <button
             onClick={() => alignSelection(edge)}
+            aria-label={tip}
             className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <I size={13} />
@@ -1832,7 +2434,7 @@ export function PropertiesPanel() {
 
   if (!shapes.length) {
     return (
-      <aside className={panelCls + panelMobileRight}>
+      <aside data-props-panel className={panelCls + panelMobileRight}>
         <PanelTop />
         <PanelScroll>
           <div className="border-b border-border px-3 py-2.5">
@@ -1882,7 +2484,7 @@ export function PropertiesPanel() {
     const b = boundsOfRects(boxes)
     return (
       <TooltipProvider>
-        <aside className={panelCls + panelMobileRight}>
+        <aside data-props-panel className={panelCls + panelMobileRight}>
           <PanelTop />
           <PanelScroll>
           {header('rect')}
@@ -1954,6 +2556,13 @@ export function PropertiesPanel() {
     )
   const filtersEl = <FiltersSection s={s} />
   const borderEl = <BorderSection s={s} live={live} end={end} commit={commitProp} />
+  // A pattern needs something to paint into, so it rides with the fills; a logo section
+  // appears on its own for any shape carrying inserted artwork.
+  const patternEl =
+    (s.type === 'rect' || s.type === 'ellipse' || s.type === 'frame' || s.type === 'text') && (
+      <PatternSection s={s} live={live} end={end} commit={commitProp} />
+    )
+  const logoEl = <LogoSection s={s} commit={commitProp} />
   const textEl = (
     <>
       <TypographySection s={s} live={live} end={end} commit={commitProp} />
@@ -1970,7 +2579,7 @@ export function PropertiesPanel() {
 
   return (
     <TooltipProvider>
-      <aside className={panelCls + panelMobileRight}>
+      <aside data-props-panel className={panelCls + panelMobileRight}>
         <PanelTop />
         <PanelScroll>
         {header(s.type, s)}
@@ -2087,6 +2696,8 @@ export function PropertiesPanel() {
             {/* sequence for text: appearance -> typography -> text fill -> fill -> shadow -> filters -> outline */}
             {textEl}
             {fillEl}
+            {patternEl}
+            {logoEl}
             {shadowsEl}
             {filtersEl}
             {borderEl}
@@ -2094,6 +2705,8 @@ export function PropertiesPanel() {
         ) : (
           <>
             {fillEl}
+            {patternEl}
+            {logoEl}
             {shadowsEl}
             {filtersEl}
             {s.type === 'frame' && <LayoutSection s={s} />}

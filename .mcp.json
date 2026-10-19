@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "petals": {
+      "type": "stdio",
+      "command": "bun",
+      "args": ["run", "mcp-server/petal-mcp.ts"]
+    }
+  }
+}

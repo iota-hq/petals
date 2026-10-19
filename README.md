@@ -29,14 +29,17 @@ state lives in `localStorage`, right in your browser.
 
 ### Canvas & shapes
 - Frame / rectangle / ellipse / line / image / text tools; draw into frames (nesting) or the page
-- Frame presets (incl. **Desktop 1080p**, 1920×1080) that **auto-fit on screen** when created
+- Frame presets (incl. **Desktop 1080p**, 1920×1080) that **auto-fit on screen** when created, from a
+  menu that expands into place (93% → 100%, fading in) rather than flashing open
 - Multi-select, marquee, shift-click; align panel; position & size with constraint-aware scrub fields
 - **Drill-down selection** (Figma-style): a click selects the outermost shape, a double-click drills
   one level deeper; text takes one more double-click to enter inline editing. A plain click on the
   same nested stack keeps your drilled depth (so deep children stay movable) — anything else resets
 - **Right-click context menu on the canvas**: bring to front / send to back, flip H / flip V,
-  copy, paste, **copy as ▸ Code / PNG / SVG**, group selection, duplicate, lock/unlock, hide/show,
-  rename, delete — every op implemented for real against the document model
+  copy, paste, **copy as ▸ Code / PNG / SVG**, **Library ▸ Patterns / Logos / Icons** (opens the
+  asset panel on that tab), group selection, duplicate, lock/unlock, hide/show, rename, delete —
+  every op implemented for real against the document model. The menu flips itself up from the
+  bottom edge rather than run off screen
 - **Alt + hover measurement** (Figma-style): hold Alt and hover another element to see dotted pink
   distance labels to the selection on every side, plus solid edge-alignment markers
 - Keyboard: Ctrl+C/V/X/D, arrow nudge, Escape cascade, delete
@@ -52,6 +55,41 @@ state lives in `localStorage`, right in your browser.
   from the Fontsource CDN (`bun run fonts:index` regenerates the index)
 - Opacity, corner radius (uniform or per-corner), rotation + flips applied to every renderer
   (DOM, canvas, SVG, EPS alike) — via one shared transform helper
+
+### The asset library
+- **Library panel** in the toolbar — or **right-click ▸ Library** — with **Patterns**, **Logos** and
+  **Icons** as separate tabs behind one search box. It opens as a compact 256×380 panel docked just
+  above the floating toolbar and flush with the left edge of the properties sidebar, so the canvas,
+  the layers panel and the inspector all stay visible and usable while you pick
+- The **search you type survives a tab switch** — only the placeholder re-words itself — so one idea
+  can carry across patterns, logos and icons without retyping; opening the panel fresh from the
+  toolbar clears it
+- **Patterns** — 23 generative motifs from a local engine, applied as an ordinary image fill that is
+  generated once at the shape's own size. A patterned canvas therefore renders as cheaply as a
+  photographic one, and there is no per-frame geometry to go wrong
+- A pattern lands with **the motif's own palette**, exactly as the thumbnail showed it (recolour it
+  afterwards in the inspector), and applying one is a **single undo step**, whether it colours what
+  you have selected or creates a rectangle to carry it
+- The inspector's **Pattern** section tunes the motif that was applied, grouped as *Grid* (zoom,
+  motif size, gap, detail, offset, rotation, twist), *Ink* (ground and ink colours, derived or by
+  hand, opacity, stroke, paint mode), *Fade* and *Alternate*. Every control is a number field you can
+  type into, scrub, or pick from icon buttons — no sliders, and the params stay on the shape, so
+  reopening the document finds them editable
+- **Logos** are the gilbarbara brand marks only — the index is fetched once, then browsable offline
+- **Icons** are their own tab: Iconify's drawings, about 300,000 across 200+ sets, searched live
+- Brand marks and icons are both **inlined as data URLs**, so a document renders without reaching a
+  CDN, and both stay editable: the inspector's **Logo** section reads the colours the mark actually
+  paints with, offers *mono* or per-colour repainting, and can restore the original artwork
+- Icon drawings are fetched with the search, **batched one request per icon set**, rather than from
+  Iconify's per-icon SVG endpoint — the one it rate-limits, where a grid of thumbnails trips a 429
+  that lasts hours. A search that could not be made says so and offers a retry, and the thumbnails
+  are local, so tapping one is instant
+- Tiles on all three tabs are **the artwork itself**: no plate behind it and no box on hover —
+  hovering dims the thumbnail and shows the name in a small pill above it, so the grid stays quiet
+  and five columns wide
+- **Text** boxes open hugging their content — type and the box grows, press Enter for a new line;
+  drag a side handle and the width you choose sticks
+- Offline, the fetched sources say so and offer a retry; patterns keep working
 
 ### Auto layout
 - Frames can take a **flow**: vertical / horizontal, with **gap** and alignment controls
@@ -103,14 +141,23 @@ bun run fonts:index  # regenerate public/fonts/google-fonts.json from api.fontso
 bun run preview    # serve the production build
 ```
 
+**Where your work lives**: every document sits in the `localStorage` of the browser profile you open
+the app in, under `petal.doc.v1.<projectId>` — so `http://localhost:5173/projects` in *that* browser
+is the only place your boards exist. A different browser, a different port, a private window or a
+cleared profile is a different, empty set of documents. `/board/<projectId>` is the link to one
+document, and the id in it is the storage key.
+
 ## Architecture
 
 ```
 src/
   model/       types, zod schema, defaults, geometry, shared styles/transforms
   store/       docStore (Immer doc + history), uiStore (camera/selection/clipboard), projectsStore
+  lib/         googleFonts index; iconify (batched icon data), brandLogos, svg (sanitise/recolour);
+               patterns/ — the motif engine plus the fill helper that turns a motif into a shape fill
   editor/      CanvasRoot (pointer/wheel camera), NodeView renderer, SelectionOverlay,
-               HoverMeasure (alt-measure), LeftPanel, PropertiesPanel, ContextMenu, exporters
+               HoverMeasure (alt-measure), LeftPanel, PropertiesPanel, ContextMenu, AssetPanel
+               (the shared picker chrome) with LibraryPanel and FontPicker, exporters, mcpBridge
   pages/       Landing, Dashboard (project list), EditorPage wiring
 ```
 
@@ -125,118 +172,137 @@ Full browser suites driving an installed Edge/Chromium (playwright-core, headles
 ```bash
 bun build scripts/e2eVerify.ts  --target=node --external=playwright-core --outfile=scripts/e2eVerify.mjs && node scripts/e2eVerify.mjs   # drawing, frames, panels, undo/redo, stores
 bun build scripts/menuVerify.ts --target=node --external=playwright-core --outfile=scripts/menuVerify.mjs && node scripts/menuVerify.mjs  # context menu ops, copy/paste, group, lambdas, alt-measure
+node scripts/boardVerify.mjs   # /board tools: draw, select/drill, z-order, clipboard, lock/hide, group, undo/redo, auto-layout, align, nudge, frame presets, zoom, pages, copy-as-code, persistence
+node scripts/boardVerify2.mjs  # /board inspector: position/size commits, opacity/radius/rotation, gradient+solid fills, shadows, filters, outline, layout gap/fill, text re-edit, rename
+node scripts/boardVerify3.mjs  # /board: layer drag reorder, image insertion, PNG/SVG/EPS downloads, page deletion
+bun build scripts/fontVerify.ts   --target=node --external=playwright-core --outfile=scripts/fontVerify.mjs && node scripts/fontVerify.mjs   # text panel + hugging/auto-width text boxes, font picker
+bun build scripts/textCommitVerify.ts --target=node --external=playwright-core --outfile=scripts/textCommitVerify.mjs && node scripts/textCommitVerify.mjs # text edit commit on outside click
+node scripts/libraryVerify.mjs # asset library: panel geometry + tabs, tiles and their hover hint, pattern palette + undo, the inspector's Pattern section, brand-logo and icon sources, search kept across tabs
+node scripts/mcpVerify.mjs     # MCP: starts the server, drives client → /mcp → bridge → tab → docStore, checks the DOM
+node scripts/popVerify.mjs     # popovers, tooltips, drag-scrub number fields, the assets panel, dock items
+node scripts/dockVerify.mjs    # sidebar dock: park, restore, persisted layout
 ```
 
-Also in `scripts/`, run the same way: `popVerify` (popovers/inspector rows), `textCommitVerify`
-(text editing + commit), `fontVerify` (Google Fonts browser), `dockVerify` (panel docking) and
-export checks. Every suite ends with a pass/fail summary, a console-error report and a non-zero
-exit code on failure. Screenshots land in `test-artifacts/`.
+The `boardVerify*` suites need the dev server up (`bun run dev`, `http://localhost:5173`) and drive
+real pointer/keyboard input against an installed headless Edge/Chromium. Every suite ends with a
+pass/fail summary, a console-error report and a non-zero exit code on failure.
 
 ## Making Petals scriptable — MCP
 
-Petal's document is a plain serializable tree, which makes it a natural fit for
-[Model Context Protocol](https://modelcontextprotocol.io) (MCP): AI hosts (Claude Desktop, Claude
-Code, OpenCode, …) connect over stdio and get tools to read and edit designs. Nothing in this repo
-bound to a server today — here is the full recipe to build it.
+An AI host — Claude Code, OpenCode, Claude Desktop, anything that speaks
+[Model Context Protocol](https://modelcontextprotocol.io) — can read and edit the design in your
+open `/board` tab. It is already built:
 
-### 1. Add the SDK
+| File | Role |
+| --- | --- |
+| `mcp-server/petal-mcp.ts` | the MCP server: seven tools + one resource, over stdio *and* Streamable HTTP |
+| `mcp-server/bridge.ts` | the localhost bridge between that server and the browser tab |
+| `src/editor/mcpBridge.ts` | the browser side, inert unless the board URL carries `?mcp` |
+| `src/pages/Mcp.tsx` | the in-app page at `/mcp`: live bridge status and the snippet for each host |
+| `scripts/mcpVerify.mjs` | end-to-end suite: MCP client → `/mcp` → bridge → tab → `docStore` |
+
+### Why a separate process
+
+A browser page cannot host an MCP server. MCP clients talk to a *process* (stdio) or an HTTP
+endpoint, a client-only SPA has neither, and nothing outside the page can reach `localStorage`. So
+the connector is a small local companion process, and your open tab is the document it acts on.
+
+It lives in this repo (two files, no build step, run straight from source with `bun`) so the tool
+vocabulary stays in step with `src/model/types.ts` and `src/editor/commands.ts`. It is *not* part of
+the Vite bundle: normal use downloads nothing extra, and `mcpBridge.ts` no-ops without `?mcp`.
+
+### Use it
 
 ```bash
-bun add @modelcontextprotocol/sdk zod
+bun run mcp      # one process serves the bridge and /mcp on 127.0.0.1:8765
 ```
 
-### 2. Write the server (`mcp-server/petal-mcp.ts`)
+Then open the board with the bridge flag. This is the step that makes the tab reachable:
 
-Register tools with zod schemas, serve over stdio. Each tool is a thin wrapper over the same
-structures the editor uses (see `src/model/types.ts` and `src/editor/commands.ts`):
-
-```ts
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
-import { z } from 'zod'
-import { readDoc, writeDoc } from './bridge.js' // step 3
-
-const server = new McpServer({ name: 'petals', version: '0.1.0' })
-
-server.registerTool('get_doc', {
-  description: 'Read the current Petals document as a node tree',
-  inputSchema: { projectId: z.string() },
-}, async ({ projectId }) => ({
-  content: [{ type: 'text', text: JSON.stringify(await readDoc(projectId)) }],
-}))
-
-server.registerTool('update_elements', {
-  description: 'Patch one or more shapes: position, size, fill, visible, locked, name…',
-  inputSchema: {
-    projectId: z.string(),
-    patches: z.array(z.object({ id: z.string(), fields: z.record(z.unknown()) })),
-  },
-}, async ({ projectId, patches }) => {
-  const doc = await readDoc(projectId)
-  for (const { id, fields } of patches) Object.assign(doc.nodes[id], fields)
-  await writeDoc(projectId, doc)
-  return { content: [{ type: 'text', text: `updated ${patches.length} shape(s)` }] }
-})
-
-server.registerTool('delete_elements', {
-  description: 'Delete shapes (and their subtrees) by id',
-  inputSchema: { projectId: z.string(), ids: z.array(z.string()) },
-}, async ({ projectId, ids }) => {
-  const doc = await readDoc(projectId)
-  for (const id of ids) delete doc.nodes[id]
-  await writeDoc(projectId, doc)
-  return { content: [{ type: 'text', text: `deleted ${ids.length}` }] }
-})
-
-await server.connect(new StdioServerTransport())
+```
+http://localhost:5173/board/<projectId>?mcp=8765
 ```
 
-Follow the same pattern for `create_frame`, `duplicate_elements`, `rename_elements`,
-`export_selection` (reusing `exporters.ts`) and a read-only `doc://<projectId>` resource via
-`server.resource(...)`.
+Now point a host at the same port. **Claude Code**, over HTTP:
 
-### 3. Bridge the browser storage to the server
-
-MCP runs as a Node process, but documents live in the browser's `localStorage`. Two clean options:
-
-- **File exchange (simplest):** add "Export project JSON / Import" to the dashboard; the server
-  reads/writes those JSON files on disk. Perfect for batch AI edits and CI-style tools.
-- **Live editor bridge:** run a small WebSocket relay inside the MCP process; the editor page
-  connects to it on load and forwards every `docStore` change. Tools then mutate the *live*
-  document through the existing commands (the store already reacts to incoming messages).
-  Sketch of the client side, dropped into `EditorPage`:
-
-```ts
-// one-way live sync of the serialized doc
-const ws = new WebSocket('ws://localhost:8765')
-ws.onopen = () => ws.send(JSON.stringify({ type: 'doc', doc: serialize(docStore.getState()) }))
+```bash
+claude mcp add --transport http petals http://127.0.0.1:8765/mcp
+claude mcp list
 ```
 
-(Debounce and reconcile with the history model — the relay is the only stateful piece.)
+…or over stdio, letting the host own the process (the bridge still listens on 8765, so don't also
+run `bun run mcp`):
 
-### 4. Register it with an MCP host
+```bash
+claude mcp add --transport stdio petals -- bun run D:/Projects/iota-draw/mcp-server/petal-mcp.ts
+```
 
-Claude Desktop (`claude_desktop_config.json`), Claude Code, or OpenCode's `mcp` config:
+**OpenCode** — `oauth: false` matters, or OpenCode tries OAuth against the localhost URL and reports
+`needs authentication`:
 
-```json
+```jsonc
 {
-  "mcpServers": {
-    "petals": {
-      "command": "bun",
-      "args": ["run", "mcp-server/petal-mcp.ts"],
-      "cwd": "D:/Projects/iota-draw"
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "petals": {
+        "type": "remote",
+        "url": "http://127.0.0.1:8765/mcp",
+        "oauth": false
+      }
     }
-  }
+  },
 }
 ```
 
-### 5. Test it
+**Anything else** — plain stateless Streamable HTTP (no session header, JSON responses):
 
 ```bash
-bunx @modelcontextprotocol/inspector bun run mcp-server/petal-mcp.ts
+curl -s http://127.0.0.1:8765/mcp \
+  -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
-…opens the interactive inspector: connect, call `get_doc`, patch a fill, confirms in the browser.
+### The tools
+
+| Tool | Does |
+| --- | --- |
+| `list_boards` | boards the connected tabs announced, shape counts, whether a tab is live |
+| `get_doc` | the board's pages and every shape, as the editor currently has it |
+| `create_shapes` | add frames/rects/ellipses/lines/text/images; returns the new ids |
+| `update_shapes` | patch shapes by id — position, size, fill, text, layout, visible, locked… |
+| `delete_shapes` | delete shapes and everything nested inside them |
+| `select_shapes` | move the editor's selection, so the user sees what changed |
+| `export_shapes` | render the selection back as SVG, PNG (1×/2×) and React + Tailwind source |
+
+Plus a read-only resource, `petal://board/<projectId>`.
+
+Edits run through the editor's own commands, so they appear instantly, persist like any other
+change, and undo with Ctrl+Z — one tool call is one undo step, which is what `setPropsBatch` in
+`src/editor/commands.ts` exists for.
+
+### Safety, and why there is no login
+
+The socket binds `127.0.0.1`, and any request carrying a browser `Origin` must name a local origin,
+so a website you happen to have open cannot read your design: CORS blocks the *read* of a
+cross-origin response but not the request itself, so the request has to be refused as well. Tighten
+it with `--origin http://localhost:5173` or `PETALS_MCP_ORIGINS`.
+
+There is no authentication because this shape does not need it — the endpoint is reachable only from
+your own machine, MCP clients send no `Origin` (they are not browsers), and MCP's OAuth story is for
+*remote* servers. A hosted Petals would need a backend, real accounts and OAuth 2.1 + PKCE before it
+could expose any of this, which is exactly why the connector is local-only. That hosted work is
+scoped — and deliberately not started — in [`docs/hosted-mcp-plan.md`](docs/hosted-mcp-plan.md).
+
+`--port <n>` or `PETALS_BRIDGE_PORT` moves the port; the bridge and `/mcp` share it.
+
+### Test it
+
+```bash
+bun run dev                    # in another terminal
+node scripts/mcpVerify.mjs     # starts its own server, drives the whole chain, checks the DOM
+bunx @modelcontextprotocol/inspector bun run mcp-server/petal-mcp.ts   # interactive inspector
+```
 
 ## Roadmap — what's still missing
 
@@ -246,17 +312,21 @@ does not have yet:
 - **File & workspace management** — multi-file workspaces with folders, file thumbnails for the
   dashboard, cloud persistence + version history browser
 - **Design system** — design tokens (named color/type/spacing) with token output in code export,
-  shared icon library, global styles
+  global styles
 - **Canvas intelligence** — layer search ("all fills #f472b6"), structural query API for tooling,
   rulers/guides/snap-to-grid, prototyping links between frames
 - **Elements & drawing** — constraint-based resizing, boolean ops, pen/vector editing,
   component + variants, rich text
 - **Auto layout v2** — grid flow, reverse direction, wrapping, per-child spacing overrides
-- **Assets & media** — AI image generation, SVG authoring/vectorize, image crop/mask mode
+- **Assets & media** — AI image generation, SVG authoring/vectorize, image crop/mask mode (the
+  searchable pattern / logo / icon library is in; these are the parts still missing)
 - **Design ↔ code bridge** — live round-trip (push code/artboards onto the canvas, pull updates back)
 - **Code export polish** — design-token output (CSS vars / Tailwind theme), `<button>` inference,
   component-name dedupe across multi-component exports
 - **Formats** — PDF export, per-node batch export marks
+- **Hosted MCP** — the connector above works against your own machine. Making it work against a
+  deployed Petals, with accounts, OAuth 2.1 and one-command agent setup, is scoped in
+  [`docs/hosted-mcp-plan.md`](docs/hosted-mcp-plan.md) — parked, not started.
 
 Petal is an independent project. The Atelier codebase (`D:\Projects\reference\atelier`) was used
 as a *reference only* — no GPL-3.0 code was copied (see `ATTRIBUTION.md`).

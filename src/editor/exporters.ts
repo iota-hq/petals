@@ -379,7 +379,7 @@ const RASTER: Record<string, string> = {
 }
 
 /** Render the current selection into an encoded raster Blob (null when nothing to export). */
-async function rasterBlob(format: 'png' | 'jpeg' | 'webp' | 'avif', scale = 2): Promise<Blob | null> {
+export async function rasterBlob(format: 'png' | 'jpeg' | 'webp' | 'avif', scale = 2): Promise<Blob | null> {
   const snap = collectSelection()
   if (!snap) return null
   const { nodes, roots } = snap

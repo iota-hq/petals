@@ -39,16 +39,21 @@ function Hint({
   label,
   children,
   side = 'bottom',
+  delay = 250,
 }: {
   label: React.ReactNode
   children: React.ReactNode
   side?: 'top' | 'bottom' | 'left' | 'right'
+  /** ms of hover before it appears; a roomy default keeps a swept-over grid quiet */
+  delay?: number
 }) {
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipContent side={side}>{label}</TooltipContent>
-    </Tooltip>
+    <TooltipPrimitive.Provider delayDuration={delay}>
+      <TooltipPrimitive.Root>
+        <TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
+        <TooltipContent side={side}>{label}</TooltipContent>
+      </TooltipPrimitive.Root>
+    </TooltipPrimitive.Provider>
   )
 }
 

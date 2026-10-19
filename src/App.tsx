@@ -6,6 +6,7 @@ import DesignSystem from '@/pages/DesignSystem'
 import About from '@/pages/About'
 import Careers from '@/pages/Careers'
 import Gallery from '@/pages/Gallery'
+import Mcp from '@/pages/Mcp'
 import EditorPage from '@/editor/EditorPage'
 import { ConfirmHost } from '@/components/ui/confirm'
 
@@ -16,6 +17,7 @@ type Route =
   | { kind: 'about' }
   | { kind: 'careers' }
   | { kind: 'gallery' }
+  | { kind: 'mcp' }
   | { kind: 'board'; id: string }
 
 function parsePath(): Route {
@@ -28,6 +30,7 @@ function parsePath(): Route {
   if (p.startsWith('/about')) return { kind: 'about' }
   if (p.startsWith('/careers')) return { kind: 'careers' }
   if (p.startsWith('/gallery')) return { kind: 'gallery' }
+  if (p.startsWith('/mcp')) return { kind: 'mcp' }
   return { kind: 'landing' }
 }
 
@@ -105,6 +108,8 @@ function App() {
       <Careers />
     ) : route.kind === 'gallery' ? (
       <Gallery />
+    ) : route.kind === 'mcp' ? (
+      <Mcp />
     ) : route.kind === 'board' ? (
       <EditorPage key={route.id} projectId={route.id} />
     ) : (

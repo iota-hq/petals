@@ -200,10 +200,11 @@ export const useDoc = create<DocStore>((set, get) => {
         }
         cursor += sizeOf(k) + g
       }
-      // hug grows the frame's main axis to fit content + padding
+      // hug grows the frame's main axis to fit content + padding. Margins can now be
+      // negative (they pull content in), so the total can go under zero — a frame may not.
       if (hug) {
         const contentMain = kids.reduce((a, k) => a + sizeOf(k), 0) + g * Math.max(0, kids.length - 1)
-        const full = contentMain + (mainAxis === 'w' ? m.l + m.r : m.t + m.b)
+        const full = Math.max(0, contentMain + (mainAxis === 'w' ? m.l + m.r : m.t + m.b))
         if (mainAxis === 'w') {
           if (Math.abs(f.w - full) > 0.01) f.w = full
         } else {

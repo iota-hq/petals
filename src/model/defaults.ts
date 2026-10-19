@@ -71,7 +71,8 @@ export function normalizeShape(raw: unknown): Shape | null {
   for (const key of ['fill', 'radius', 'radii', 'clip', 'x1', 'y1', 'x2', 'y2', 'stroke', 'strokeWidth',
     'rotation', 'flipX', 'flipY', 'filters', 'margin', 'pageId',
     'layoutFlow', 'gap', 'layoutMain', 'layoutCross', 'sizingMain', 'mainFill', 'crossFill',
-    'text', 'fontSize', 'fontWeight', 'fontFamily', 'align', 'color', 'lineHeight', 'letterSpacing', 'src', 'fit'] as const) {
+    'pattern', 'logo',
+    'text', 'fontSize', 'fontWeight', 'fontFamily', 'align', 'color', 'lineHeight', 'letterSpacing', 'autoWidth', 'src', 'fit'] as const) {
     const v = r[key]
     if (v !== undefined) (shape as unknown as Record<string, unknown>)[key] = v
   }

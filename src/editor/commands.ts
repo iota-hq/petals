@@ -46,7 +46,12 @@ function toLocal(nodes: Record<string, Shape>, parentId: string | null, page: Ve
 
 /* ============================== creation ============================== */
 
-export function addShapeAt(tool: DragTool, rectPage: Rect, nameOverride?: string): string {
+/**
+ * Add a shape at a page rect. `fields` is applied to the shape *before* it enters the
+ * document, so a caller that knows the finished state (the pattern library, say) can pass
+ * it in and get one undo step instead of an insert followed by a patch.
+ */
+export function addShapeAt(tool: DragTool, rectPage: Rect, nameOverride?: string, fields?: ShapePatch): string {
   const doc = useDoc.getState()
   const nodes = doc.nodes
   const r = rectPage
@@ -79,7 +84,7 @@ export function addShapeAt(tool: DragTool, rectPage: Rect, nameOverride?: string
           w: r.w,
           h: r.h,
         })
-  doc.insertShapes([shape], `Add ${nameOverride ?? shapeNames[tool]}`)
+  doc.insertShapes([fields ? { ...shape, ...fields } : shape], `Add ${nameOverride ?? shapeNames[tool]}`)
   useUi.setState({ selection: [shape.id], tool: 'select', gesture: null })
   return shape.id
 }
@@ -204,6 +209,9 @@ export function addTextAt(page: Vec): string {
     x: local.x,
     y: local.y,
     text: '',
+    // a new text starts as a caret and grows with what is typed, rather than opening as a
+    // 320px empty box; a dragged side handle turns this off
+    autoWidth: true,
   })
   doc.insertShapes([shape], 'Add text')
   useUi.setState({ selection: [shape.id], tool: 'select', gesture: null, editingText: shape.id })
@@ -262,8 +270,12 @@ export async function addImageFile(file: File, at?: Vec) {
   insertImageFragment(data.src, data.w * disp, data.h * disp, point)
 }
 
-/** Paste / drop helper: insert an already-loaded data URL at a page point (centered). */
-export function insertImageFragment(src: string, w: number, h: number, at: Vec): string {
+/**
+ * Paste / drop helper: insert an already-loaded data URL at a page point (centered).
+ * `fields` rides along so a caller that already knows the finished shape — the asset
+ * library, with a logo's pristine markup — gets one undo step and one insert.
+ */
+export function insertImageFragment(src: string, w: number, h: number, at: Vec, name?: string, fields?: ShapePatch): string {
   const doc = useDoc.getState()
   const nodes = doc.nodes
   const parent = adoptFrameAt(nodes, at)
@@ -271,7 +283,7 @@ export function insertImageFragment(src: string, w: number, h: number, at: Vec):
   const local = toLocal(nodes, parentId, at)
   const shape = createShape({
     type: 'image',
-    name: uniqueName(nodes, 'image'),
+    name: name ?? uniqueName(nodes, 'image'),
     parentId,
     order: topOrderFor(nodes, parentId) + 1024,
     x: local.x - w / 2,
@@ -279,6 +291,7 @@ export function insertImageFragment(src: string, w: number, h: number, at: Vec):
     w,
     h,
     src,
+    ...fields,
   })
   doc.insertShapes([shape], 'Add image')
   useUi.setState({ selection: [shape.id], tool: 'select' })
@@ -300,6 +313,26 @@ export function setProps(ids: string[], patch: ShapePatch, label = 'Change') {
   tx.commit()
 }
 
+/**
+ * Apply several independent patches as ONE undo step. Used by the MCP bridge,
+ * where a single `update_shapes` call must be a single Ctrl+Z.
+ */
+export function setPropsBatch(entries: { id: string; fields: ShapePatch }[], label = 'Change') {
+  const doc = useDoc.getState()
+  const live = entries.filter((e) => doc.nodes[e.id])
+  if (!live.length) return 0
+  const tx = doc.beginTx(label)
+  for (const e of live) tx.capture(e.id, e.fields)
+  doc.patchLive((n) => {
+    for (const e of live) {
+      const s = n[e.id]
+      if (s) Object.assign(s, e.fields)
+    }
+  })
+  tx.commit()
+  return live.length
+}
+
 export function commitTextEdit(id: string, text: string, autoH: number) {
   setProps([id], { text, h: Math.max(1, autoH) }, 'Edit text')
 }
@@ -311,12 +344,23 @@ export function commitActiveTextEdit() {
   const el = useDoc.getState().nodes[id] ? (document.querySelector(`[data-node-id="${id}"]`) as HTMLElement | null) : null
   useUi.setState({ editingText: null })
   if (!el) return
-  const text = el.textContent ?? ''
+  const text = readText(el)
   if (!text.trim()) {
     useDoc.getState().deleteShapes([id], 'Edit text')
     return
   }
   commitTextEdit(id, text, el.scrollHeight)
+}
+
+/**
+ * The text a box currently holds, with its line breaks — however the browser chose to mark
+ * them. `innerText` renders the box to text, so a literal `\n`, a `<br>` and a `<div>` per
+ * line all arrive as the same character, which is exactly the string we store. `textContent`
+ * would quietly drop every break the browser made. Soft wraps are not breaks, and are not
+ * included. One trailing break is dropped: pressing Enter at the very end is not a new line.
+ */
+export function readText(el: HTMLElement): string {
+  return el.innerText.replace(/\n+$/, '')
 }
 
 export function typeLive(id: string, text: string) {
@@ -326,11 +370,16 @@ export function typeLive(id: string, text: string) {
   })
 }
 
-/** Text auto-height: measured from DOM, applied without polluting undo entries. */
-export function setIntrinsicHeight(id: string, h: number) {
+/**
+ * Text intrinsic sizing: measured from the DOM, applied without polluting undo entries. The
+ * width only matters for auto-width text — a fixed-width box keeps the width it was given.
+ */
+export function setIntrinsicSize(id: string, w: number, h: number) {
   useDoc.getState().patchLive((n) => {
     const s = n[id]
-    if (s && Math.abs(s.h - h) > 0.75) s.h = h
+    if (!s) return
+    if (Math.abs(s.h - h) > 0.75) s.h = h
+    if (s.autoWidth && Math.abs(s.w - w) > 0.75) s.w = Math.max(1, w)
   })
 }
 
@@ -593,7 +642,7 @@ export function selectAllTop(): string[] {
   const nodes = useDoc.getState().nodes
   const active = useDoc.getState().activePage
   const onPage = (s: Shape) => !s.pageId || s.pageId === active
-  const ids = Object.values(nodes).filter((s) => s.parentId === null && s.visible && onPage(s)).map((s) => s.id)
+  const ids = Object.values(nodes).filter((s) => s.parentId === null && s.visible && !s.locked && onPage(s)).map((s) => s.id)
   useUi.setState({ selection: ids })
   return ids
 }
@@ -869,7 +918,7 @@ export function startResize(id: string, handle: Handle, page: Vec, parentOff: Ve
   const s = doc.nodes[id]
   if (!s) return
   const tx = doc.beginTx('Resize')
-  tx.capture(id, { x: 0, y: 0, w: 0, h: 0 })
+  tx.capture(id, { x: 0, y: 0, w: 0, h: 0, autoWidth: false })
   useUi.setState({
     gesture: {
       kind: 'resize',
@@ -892,6 +941,9 @@ export function resizeLive(page: Vec, shift: boolean) {
   const s = doc.nodes[g.id]
   if (!s) return
   const patch = computeResize(g.handle, g.start, { x: page.x - g.parentOff.x, y: page.y - g.parentOff.y }, shift, s.type === 'text')
+  // A dragged side handle is the user overruling the text's own width: from here the box
+  // holds the width it was given instead of snapping back to hug the glyphs.
+  if (s.type === 'text' && s.autoWidth && (g.handle.includes('e') || g.handle.includes('w'))) patch.autoWidth = false
   doc.patchLive((n) => {
     const t = n[g.id]
     if (t) Object.assign(t, patch)
@@ -1043,7 +1095,8 @@ export function finishMarquee(start: Vec, point: Vec, additive: boolean) {
   const active = useDoc.getState().activePage
   const ids: string[] = []
   for (const s of Object.values(nodes)) {
-    if (s.parentId === null && s.visible && (!s.pageId || s.pageId === active)) {
+    // locked shapes stay unselectable, exactly like hit-testing (see shapeChainUp)
+    if (s.parentId === null && s.visible && !s.locked && (!s.pageId || s.pageId === active)) {
       if (rectIntersect(r, pageAABB(nodes, s))) ids.push(s.id)
     }
   }

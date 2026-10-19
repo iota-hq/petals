@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import {
   Circle,
   Frame,
@@ -17,6 +18,7 @@ import { useDoc } from '@/store/docStore'
 import { Hint, TooltipProvider } from '@/components/ui/tooltip'
 import { FRAME_PRESETS, addFramePreset, redo, undo } from './commands'
 import { IconDragCanvas } from './proIcons'
+import { LibraryPanel } from './LibraryPanel'
 
 const tools: Array<{ id: Tool; icon: typeof Square; label: string; key: string; dividerAfter?: boolean }> = [
   { id: 'select', icon: MousePointer2, label: 'Move', key: 'V' },
@@ -63,45 +65,53 @@ export function Toolbar() {
     <TooltipProvider>
       <div className="absolute bottom-4 left-1/2 z-30 -translate-x-1/2">
         {/* frame preset menu */}
-        {frameMenu && (
-          <div
-            ref={menuRef}
-            className="absolute bottom-full left-1/2 mb-2 w-64 -translate-x-1/2 rounded-xl border border-border bg-popover/95 p-1.5 shadow-2xl backdrop-blur"
-          >
-            <button
-              onClick={() => {
-                useUi.getState().setTool('frame')
-                setFrameMenu(false)
-              }}
-              className="mb-1 flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-[13px] text-foreground hover:bg-accent"
+        <AnimatePresence>
+          {frameMenu && (
+            <motion.div
+              ref={menuRef}
+              data-frame-menu
+              initial={{ opacity: 0, scale: 0.93 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.1 } }}
+              transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+              style={{ transformOrigin: 'bottom center' }}
+              className="absolute bottom-full left-1/2 mb-2 w-64 -translate-x-1/2 rounded-xl border border-border bg-popover/95 p-1.5 shadow-2xl backdrop-blur"
             >
-              <SquareDashed size={14} className="text-muted-foreground" />
-              <span className="flex-1">Frame</span>
-              <span className="text-[11px] text-muted-foreground">drag to draw</span>
-            </button>
-            <div className="my-1 h-px bg-border" />
-            <div className="max-h-72 overflow-y-auto scrollbar-thin">
-              {FRAME_PRESETS.map((p) => (
-                <button
-                  key={p.name}
-                  onClick={() => {
-                    addFramePreset(p.name, p.w, p.h)
-                    setFrameMenu(false)
-                  }}
-                  className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-[13px] text-foreground hover:bg-accent"
-                >
-                  <span>{p.name}</span>
-                  <span className="text-[11px] tabular-nums text-muted-foreground">
-                    {p.w} × {p.h}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+              <button
+                onClick={() => {
+                  useUi.getState().setTool('frame')
+                  setFrameMenu(false)
+                }}
+                className="mb-1 flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-[13px] text-foreground hover:bg-accent"
+              >
+                <SquareDashed size={14} className="text-muted-foreground" />
+                <span className="flex-1">Frame</span>
+                <span className="text-[11px] text-muted-foreground">drag to draw</span>
+              </button>
+              <div className="my-1 h-px bg-border" />
+              <div className="max-h-72 overflow-y-auto scrollbar-thin">
+                {FRAME_PRESETS.map((p) => (
+                  <button
+                    key={p.name}
+                    onClick={() => {
+                      addFramePreset(p.name, p.w, p.h)
+                      setFrameMenu(false)
+                    }}
+                    className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-[13px] text-foreground hover:bg-accent"
+                  >
+                    <span>{p.name}</span>
+                    <span className="text-[11px] tabular-nums text-muted-foreground">
+                      {p.w} × {p.h}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* toolbar pill */}
-        <div className="flex items-center gap-0.5 rounded-2xl border border-border bg-popover/95 p-1.5 shadow-2xl backdrop-blur">
+        <div data-toolbar className="flex items-center gap-0.5 rounded-2xl border border-border bg-popover/95 p-1.5 shadow-2xl backdrop-blur">
           {tools.map((t, i) => {
             const active = tool === t.id
             const Icon = t.icon
@@ -138,6 +148,8 @@ export function Toolbar() {
               </div>
             )
           })}
+          <div className="mx-1 h-5 w-px shrink-0 bg-border" />
+          <LibraryPanel />
           <div className="mx-1 h-5 w-px shrink-0 bg-border" />
           <Hint label="Undo (⌘Z)" side="top">
             <button

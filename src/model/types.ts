@@ -1,8 +1,9 @@
+import type { PatternParams } from '@/lib/patterns/types'
+
 export type ShapeType = 'frame' | 'rect' | 'ellipse' | 'line' | 'text' | 'image'
 export type Align = 'left' | 'center' | 'right' | 'justify'
 export type Fit = 'cover' | 'contain'
 export type ShadowKind = 'box' | 'inner'
-
 /** One gradient color stop. pos is 0..100 along the gradient axis. */
 export interface GradientStop {
   color: string
@@ -65,6 +66,25 @@ export interface Margin {
   r: number
   b: number
   l: number
+}
+
+/**
+ * A generative pattern fill. `fill` carries the rendered SVG; these are the knobs that
+ * regenerate it, kept so the pattern stays editable long after it was applied.
+ */
+export type PatternMeta = PatternParams
+
+/**
+ * An SVG logo or icon inserted from the asset library. `source` is the pristine markup the
+ * recolouring is always applied to, so edits never compound; the shape's `src` is the
+ * rendered result.
+ */
+export interface LogoSvg {
+  source: string
+  /** give up the mark's own colours and paint every part in one */
+  mono?: string
+  /** per-part replacements, keyed by the original lowercased hex */
+  palette?: Record<string, string>
 }
 
 /**
@@ -133,9 +153,19 @@ export interface Shape {
   color?: string
   lineHeight?: number
   letterSpacing?: number
+  /**
+   * The box hugs its text instead of holding a fixed width: a new text starts as a caret and
+   * grows with what is typed, never wrapping. Dragging a side handle clears it, because the
+   * width is then the user's, not the text's.
+   */
+  autoWidth?: boolean
   // image
   src?: string
   fit?: Fit
+  /** generative pattern fill (see lib/patterns): params that regenerate `fill` */
+  pattern?: PatternMeta
+  /** inserted SVG logo / icon, and how to recolour it */
+  logo?: LogoSvg
 }
 
 export type ShapePatch = Partial<Shape>

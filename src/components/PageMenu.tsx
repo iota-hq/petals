@@ -14,6 +14,7 @@ const LINKS = [
   ['About', '/about'],
   ['Careers', '/careers'],
   ['Gallery', '/gallery'],
+  ['MCP', '/mcp'],
 ] as const
 
 /**

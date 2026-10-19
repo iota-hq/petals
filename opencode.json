@@ -1,0 +1,11 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "petals": {
+        "type": "local",
+        "command": ["bun", "run", "mcp-server/petal-mcp.ts"]
+      }
+    }
+  }
+}

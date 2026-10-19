@@ -7,6 +7,9 @@ export type Tool = 'select' | 'hand' | DragTool | 'text' | 'image'
 export type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
 export type Camera = { x: number; y: number; zoom: number }
 
+/** What the asset panel can be opened on — see `requestLibrary`. */
+export type LibrarySource = 'patterns' | 'logos' | 'icons'
+
 /** Screen → page conversion inputs live in the wheel/pointer handlers (view.ts). */
 export interface Rect {
   x: number
@@ -63,6 +66,11 @@ interface UiState {
   clipboard: string | null
   /** When set, the layers panel opens the row's inline rename (context-menu "Rename"). */
   renameRequest: string | null
+  /**
+   * The context menu's "Library" submenu asks the toolbar's asset panel to open on a source;
+   * the nonce makes a repeat request (same source, twice) a fresh one. The panel clears it.
+   */
+  libraryRequest: { source: LibrarySource; nonce: number } | null
   /** Drag-to-fill mode: canvas pans freely and release over an edge strip fills it (Toolbar). */
   dockZones: boolean
 
@@ -81,6 +89,8 @@ interface UiState {
   togglePanel: (side: 'left' | 'right') => void
   setCanvasBg: (v: string) => void
   setRenameRequest: (id: string | null) => void
+  requestLibrary: (source: LibrarySource) => void
+  clearLibraryRequest: () => void
 }
 
 export const DEFAULT_CANVAS_BG = '#404040'
@@ -107,6 +117,7 @@ export const useUi = create<UiState>((set) => ({
   canvasBg: initialCanvasBg(),
   clipboard: null,
   renameRequest: null,
+  libraryRequest: null,
   dockZones: false,
 
   setTool: (tool) => set({ tool }),
@@ -140,6 +151,9 @@ export const useUi = create<UiState>((set) => ({
     set({ canvasBg })
   },
   setRenameRequest: (renameRequest) => set({ renameRequest }),
+  requestLibrary: (source) =>
+    set((s) => ({ libraryRequest: { source, nonce: (s.libraryRequest?.nonce ?? 0) + 1 } })),
+  clearLibraryRequest: () => set({ libraryRequest: null }),
 }))
 
 /** Pointer-centered zoom, clamped. rect = canvas element rect at event time. */

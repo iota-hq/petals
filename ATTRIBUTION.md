@@ -1,6 +1,6 @@
 # Attribution & Reference Hygiene
 
-> Last updated: 2026-10-17
+> Last updated: 2026-10-19
 
 ## Atelier (oskarglauser/atelier)
 
@@ -24,6 +24,24 @@ was copied.
   space-pan, zoom-to-cursor).
 - **Wonder (wonder.design)** — product direction for canvas-built React output
   and an MCP-driven editor.
+
+## Asset library sources
+
+The asset library (`src/lib/brandLogos.ts`, `src/lib/iconify.ts`) fetches its artwork from public
+CDNs **at runtime** — none of it is vendored into this repository, and nothing is bundled into the
+app.
+
+| Source | What | License |
+| --- | --- | --- |
+| [gilbarbara/logos](https://github.com/gilbarbara/logos) | full-colour brand logos | CC0-1.0 (the marks remain trademarks of their owners) |
+| [Iconify](https://iconify.design) / [icones.js.org](https://icones.js.org) | monochrome icons from 200+ open sets, searched live | the API and index are MIT; each icon set keeps its own licence (shown by Iconify per set) |
+
+Icons come from Iconify's collection endpoint (`/{prefix}.json?icons=…`), batched one request per
+icon set, rather than its per-icon SVG generator, which rate-limits bursts. Each icon's drawing is
+sanitised and inlined as a data URL; the licence of the set it came from is the set's own.
+
+The pattern engine in `src/lib/patterns/` is ported from **iOTA-WIP**, this project's own earlier
+codebase — no third-party licence is involved.
 
 ## Our own dependencies (all permissive)
 

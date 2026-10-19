@@ -4,6 +4,7 @@ import {
   ChevronRight,
   ClipboardPaste,
   Code,
+  Component,
   Copy,
   CopyPlus,
   Eye,
@@ -11,18 +12,22 @@ import {
   FileImage,
   FileCode,
   Group,
+  LayoutGrid,
   Lock,
   LockOpen,
   MoveHorizontal,
   MoveVertical,
   Pencil,
   SendToBack,
+  Shapes,
+  Sparkles,
   Trash2,
   type LucideIcon,
 } from 'lucide-react'
 import { useDoc } from '@/store/docStore'
 import { useUi } from '@/store/uiStore'
 import { selectionRoots } from '@/model/geometry'
+import type { LibrarySource } from '@/store/uiStore'
 import type { Shape } from '@/model/types'
 import {
   bringToFront,
@@ -47,17 +52,19 @@ interface Row {
   danger?: boolean
   disabled?: boolean
   run?: () => void
-  /** opens the second pane (Copy as ▸) */
+  /** opens the second pane; `label` names it so more than one row can carry one */
   submenu?: Row[]
 }
 
 /**
  * Right-click menu on the canvas: layer order, flips, copy/paste (+ copy as code/PNG/SVG),
- * group, duplicate, lock, rename, visibility. Selection follows the right-clicked shape.
+ * the asset library, group, duplicate, lock, rename, visibility. Selection follows the
+ * right-clicked shape.
  */
 export function CanvasContextMenu({ onClose }: { onClose: () => void }) {
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
-  const [subOpen, setSubOpen] = useState(false)
+  /** Label of the row whose second pane is showing, or null for the first pane. */
+  const [sub, setSub] = useState<string | null>(null)
   const nodes = useDoc((s) => s.nodes)
   const selection = useUi((s) => s.selection)
   const clipboard = useUi((s) => s.clipboard)
@@ -79,7 +86,7 @@ export function CanvasContextMenu({ onClose }: { onClose: () => void }) {
         const sel = useUi.getState().selection
         if (!sel.includes(shape.id)) useUi.getState().setSelection([shape.id])
       }
-      setSubOpen(false)
+      setSub(null)
       setPos(clamp({ x: e.clientX, y: e.clientY }))
     }
     const close = (e: PointerEvent) => {
@@ -107,6 +114,16 @@ export function CanvasContextMenu({ onClose }: { onClose: () => void }) {
     onClose()
   }
 
+  /**
+   * Ask the toolbar's asset panel to open on a tab. The menu closes here, unlike the plain
+   * actions above: the panel takes over the screen edge, and leaving the menu up would hide
+   * the very thing that was just asked for.
+   */
+  const openLibrary = (source: LibrarySource) => () => {
+    useUi.getState().requestLibrary(source)
+    setPos(null)
+  }
+
   /** rows depend on the live selection (root heads, not children) */
   const rows: Row[] = useMemo(() => {
     const roots = selectionRoots(useDoc.getState().nodes, useUi.getState().selection)
@@ -124,7 +141,7 @@ export function CanvasContextMenu({ onClose }: { onClose: () => void }) {
         label: 'Copy as',
         Icon: ChevronRight,
         disabled: !has,
-        run: () => setSubOpen((v) => !v),
+        run: () => setSub((v) => (v === 'Copy as' ? null : 'Copy as')),
         submenu: [
           { label: 'Code · React + Tailwind', Icon: FileCode, run: act(() => void copySelectionCode()) },
           { label: 'PNG', Icon: FileImage, run: act(() => void copySelectionPNG()) },
@@ -132,6 +149,17 @@ export function CanvasContextMenu({ onClose }: { onClose: () => void }) {
         ],
       },
       { label: 'Paste', Icon: ClipboardPaste, shortcut: 'Ctrl V', disabled: !clipboard, run: act(pasteClipboard) },
+      { kind: 'sep' },
+      {
+        label: 'Library',
+        Icon: Shapes,
+        run: () => setSub((v) => (v === 'Library' ? null : 'Library')),
+        submenu: [
+          { label: 'Patterns', Icon: LayoutGrid, run: openLibrary('patterns') },
+          { label: 'Logos', Icon: Component, run: openLibrary('logos') },
+          { label: 'Icons', Icon: Sparkles, run: openLibrary('icons') },
+        ],
+      },
       { kind: 'sep' },
       { label: 'Group selection', Icon: Group, disabled: roots.length < 2, run: act(groupSelection) },
       { label: 'Duplicate', Icon: CopyPlus, shortcut: 'Ctrl D', disabled: !has, run: act(duplicateSelection) },
@@ -143,26 +171,27 @@ export function CanvasContextMenu({ onClose }: { onClose: () => void }) {
       { label: 'Delete', Icon: Trash2, shortcut: 'Del', danger: true, disabled: !has, run: act(deleteSelection) },
     ]
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selection, clipboard, nodes, subOpen])
+  }, [selection, clipboard, nodes, sub])
 
   if (!open) return null
+  const pane = sub ? rows.find((r) => r.label === sub)?.submenu : null
   return (
     <div
       data-context-menu
-      style={{ top: pos!.y, left: pos!.x }}
-      className="fixed z-50 w-[208px] rounded-md border border-border bg-popover/95 py-1 shadow-2xl backdrop-blur"
+      style={{ top: pos!.y, left: pos!.x, maxHeight: `calc(100vh - ${pos!.y + 12}px)` }}
+      className="fixed z-50 w-[208px] overflow-y-auto overscroll-contain rounded-md border border-border bg-popover/95 py-1 shadow-2xl backdrop-blur scrollbar-thin"
     >
-      {subOpen ? (
+      {pane ? (
         <>
           <button
-            onClick={() => setSubOpen(false)}
+            onClick={() => setSub(null)}
             className="flex w-full cursor-pointer items-center gap-2 px-2.5 py-1.5 text-left text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <ChevronRight size={13} className="rotate-180" />
             Back
           </button>
           <div className="my-1 h-px bg-border" />
-          {(rows.find((r) => r.submenu)?.submenu ?? []).map((r) => (
+          {pane.map((r) => (
             <MenuRow key={r.label} row={r} />
           ))}
         </>
@@ -193,10 +222,13 @@ function MenuRow({ row }: { row: Row }) {
   )
 }
 
-/** Keep the popup inside the viewport (menu is ~380px tall with all sections). */
+/** Tallest this menu gets once every section is on (measured, with room to spare). */
+const MENU_H = 480
+
+/** Keep the popup on screen: flip it up from the bottom edge rather than let rows fall off. */
 function clamp(p: { x: number; y: number }) {
   return {
-    x: Math.min(p.x, window.innerWidth - 220),
-    y: Math.min(p.y, window.innerHeight - 380),
+    x: Math.max(8, Math.min(p.x, window.innerWidth - 220)),
+    y: Math.max(8, Math.min(p.y, window.innerHeight - MENU_H - 12)),
   }
 }
