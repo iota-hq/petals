@@ -170,7 +170,8 @@ src/
   editor/      CanvasRoot (pointer/wheel camera), NodeView renderer, SelectionOverlay,
                HoverMeasure (alt-measure), LeftPanel, PropertiesPanel, ContextMenu, AssetPanel
                (the shared picker chrome) with LibraryPanel and FontPicker, exporters, mcpBridge
-  pages/       Landing, Dashboard (project list), EditorPage wiring
+  design-system/ docs: nav tree, Doc primitives, demo bits, one page file per nav group
+  pages/       Landing, Dashboard (project list), EditorPage wiring, DesignSystem docs shell
 ```
 
 Rules of the codebase: every document mutation goes through the commands / `docStore` tx APIs;
@@ -193,6 +194,7 @@ node scripts/libraryVerify.mjs # asset library: panel geometry + tabs, tiles and
 node scripts/mcpVerify.mjs     # MCP: starts the server, drives client → /mcp → bridge → tab → docStore, checks the DOM
 node scripts/popVerify.mjs     # popovers, tooltips, drag-scrub number fields, the assets panel, dock items
 node scripts/dockVerify.mjs    # sidebar dock: park, restore, persisted layout
+node scripts/designVerify.mjs  # /design-system: every nav route, sections, TOC, usage, current item, overflow
 ```
 
 The `boardVerify*` suites need the dev server up (`bun run dev`, `http://localhost:5173`) and drive

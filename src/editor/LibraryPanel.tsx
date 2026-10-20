@@ -9,7 +9,7 @@ import { loadLogoIndex, logoSvgUrl, searchLogos, type LogoEntry } from '@/lib/br
 import { loadIconMarkups, iconTitle, searchIcons, tintIconMarkup, IconifyUnavailable, type IconHit } from '@/lib/iconify'
 import { fetchSvgText, parseSvg, svgDataUrl } from '@/lib/svg'
 import { addShapeAt, canvasEl, insertImageFragment, pageFromClient, setPropsBatch } from './commands'
-import { AssetPanel, PillRow, panelRect, type PanelRect } from './AssetPanel'
+import { AssetPanel, panelRect, type PanelRect } from './AssetPanel'
 
 /**
  * The asset library: generative patterns, brand logos, and searchable icons — one panel,
@@ -281,15 +281,52 @@ export function LibraryPanel() {
   const loadingBrands = source === 'logos' && !logos && !logoError
   const busy = working || iconBusy || loadingBrands
 
+  // The query rides across: one search, three views of it.
   const patternTabs = (
-    <div className="flex shrink-0 items-center gap-1 border-b border-white/10 px-2 py-1">
-      <PillRow
-        label="Library source"
-        value={source}
-        options={SOURCES}
-        // The query rides across: one search, three views of it.
-        onChange={setSource}
-      />
+    <div
+      role="tablist"
+      aria-label="Library source"
+      className="flex h-9 shrink-0 items-center gap-4 border-b border-border px-3"
+    >
+      {SOURCES.map((o, i) => {
+        const selected = source === o.id
+        const count =
+          o.id === 'patterns' ? MOTIFS.length : o.id === 'logos' ? logos?.length : icons?.length
+        return (
+          <button
+            key={o.id}
+            role="tab"
+            aria-selected={selected}
+            tabIndex={selected ? 0 : -1}
+            onClick={() => setSource(o.id)}
+            onKeyDown={(e) => {
+              if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(e.key)) return
+              e.preventDefault()
+              const next =
+                e.key === 'Home'
+                  ? 0
+                  : e.key === 'End'
+                    ? SOURCES.length - 1
+                    : (i + (e.key === 'ArrowRight' ? 1 : -1) + SOURCES.length) % SOURCES.length
+              setSource(SOURCES[next].id)
+              const tabs = e.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+              tabs?.[next]?.focus()
+            }}
+            className={
+              'relative h-9 cursor-pointer text-[12.5px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#52525b] ' +
+              (selected
+                ? 'font-medium text-foreground'
+                : 'text-muted-foreground hover:text-foreground/85')
+            }
+          >
+            {o.label}
+            {!!count && (
+              <span className="ml-1 font-mono text-[10px] font-normal text-muted-foreground/50">{count}</span>
+            )}
+            {selected && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-foreground" />}
+          </button>
+        )
+      })}
     </div>
   )
 

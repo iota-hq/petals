@@ -136,36 +136,3 @@ export function AssetPanel({
   )
 }
 
-/** A small pill row of mutually exclusive choices — used for source tabs and mode switches. */
-export function PillRow<T extends string>({
-  value,
-  options,
-  onChange,
-  label,
-  className = '',
-}: {
-  value: T
-  options: Array<{ id: T; label: string }>
-  onChange: (v: T) => void
-  label?: string
-  className?: string
-}) {
-  return (
-    <div role="tablist" aria-label={label} className={'flex shrink-0 items-center gap-0.5 ' + className}>
-      {options.map((o) => (
-        <button
-          key={o.id}
-          role="tab"
-          aria-selected={value === o.id}
-          onClick={() => onChange(o.id)}
-          className={
-            'cursor-pointer rounded-full px-2.5 py-[3px] text-[11px] font-medium transition-colors ' +
-            (value === o.id ? 'bg-white/10 text-foreground' : 'text-muted-foreground hover:text-foreground')
-          }
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  )
-}
