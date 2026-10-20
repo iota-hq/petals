@@ -39,8 +39,19 @@ function baseName(type: ShapeType): string {
 }
 
 /** Create a shape from partial input, merging base + per-type defaults. Partial overrides win. */
-export function createShape(partial: Partial<Shape> & { type: ShapeType }): Shape {
-  const t = partial.type
+export function createShape(input: Partial<Shape> & { type: ShapeType }): Shape {
+  const t = input.type
+  let partial = input
+  // An image shape paints from its own `src`, not from `fill` — but `fill` legitimately takes an
+  // image object on rects/frames, so accepting one here is a plausible mistake that used to
+  // produce an invisible shape. Hoist it instead of dropping the artwork on the floor.
+  if (t === 'image' && !partial.src) {
+    const f = partial.fill
+    if (f && typeof f === 'object' && f.type === 'image' && typeof f.src === 'string') {
+      partial = { ...partial, src: f.src, fill: undefined }
+      if (partial.fit === undefined && f.fit) partial.fit = f.fit
+    }
+  }
   return {
     ...(baseDefaults as Shape),
     ...(typeDefaults[t] as Shape),

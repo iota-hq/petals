@@ -90,7 +90,10 @@ const shapeSpec = z.object({
   visible: z.boolean().optional(),
   locked: z.boolean().optional(),
   // painting
-  fill: z.union([z.string(), z.record(z.string(), z.unknown())]).optional().describe('CSS color, or a gradient/image object'),
+  fill: z
+    .union([z.string(), z.record(z.string(), z.unknown())])
+    .optional()
+    .describe('CSS color, or a gradient/image object (image objects fill rects/frames — image shapes paint from `src`)'),
   stroke: z.string().optional(),
   strokeWidth: z.number().optional(),
   radius: z.number().optional().describe('Uniform corner radius in px'),
@@ -129,7 +132,7 @@ const shapeSpec = z.object({
     .optional()
     .describe('text: hug the text instead of holding a fixed width (set false to give it a width)'),
   // image
-  src: z.string().optional().describe('Image URL or data: URL'),
+  src: z.string().optional().describe('image shape: the artwork URL or data URL it paints'),
   fit: z.enum(['cover', 'contain']).optional(),
   // the asset library
   pattern: z

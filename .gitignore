@@ -4,3 +4,6 @@ dist
 .DS_Store
 
 test-artifacts/
+
+# exported artwork (the EPS/AI writers embed rasterised assets — tens of MB each)
+export/

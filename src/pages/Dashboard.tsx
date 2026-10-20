@@ -25,12 +25,17 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="flex h-dvh flex-col">
+    <div className="relative flex h-dvh flex-col overflow-hidden bg-black">
+      {/* Rose Twilight — the same glow the landing page opens with */}
+      <div
+        className="pointer-events-none absolute inset-0 z-0"
+        style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(244, 114, 182, 0.25), transparent 70%), #000000' }}
+      />
       <motion.header
         initial={{ opacity: 0, y: -14 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: easeOut }}
-        className="relative flex h-14 shrink-0 items-center justify-end border-b border-white/10 bg-background px-5 md:px-7"
+        className="relative z-10 flex h-14 shrink-0 items-center justify-end border-b border-white/10 px-5 md:px-7"
       >
         <PageMenu />
         {/* wordmark dead-center, back to the landing page */}
@@ -49,7 +54,7 @@ export default function Dashboard() {
         </div>
       </motion.header>
 
-      <main className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">
+      <main className="relative z-10 min-h-0 flex-1 overflow-y-auto scrollbar-thin">
         <div className="mx-auto max-w-6xl px-6 pb-10 pt-14 md:pt-20">
           <motion.h1
             initial={{ opacity: 0, y: 18 }}
@@ -141,11 +146,11 @@ function ProjectCard({ project }: { project: ProjectMeta }) {
       onClick={() => {
         if (!editing) go(`/board/${project.id}`)
       }}
-      className="cursor-pointer overflow-hidden rounded-xl border border-white/8 bg-[#161616] text-left"
+      className="group cursor-pointer overflow-hidden rounded-xl border border-white/8 bg-[#161616] text-left"
     >
-      {/* quiet thumbnail: dim bloom on dark, no hover motion */}
+      {/* quiet thumbnail: dim bloom on dark, full #E063BB when the card is hovered */}
       <div className="relative flex h-32 items-center justify-center bg-[#1b1b1b]">
-        <FlowerLogo size={44} className="opacity-25" />
+        <FlowerLogo size={44} className="opacity-25 transition-opacity duration-300 group-hover:opacity-100" />
       </div>
       <div className="px-3 py-2.5">
         <div className="flex items-center justify-between gap-1">

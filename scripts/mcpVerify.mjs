@@ -220,6 +220,26 @@ const undone = await doc()
 ok(undone.nodes[swatchId].fill === '#3b82f6', `Ctrl+Z reverted the MCP fill change (${undone.nodes[swatchId]?.fill})`)
 ok(undone.nodes[frameId].layoutFlow !== 'v', 'the whole update_shapes call was one undo step')
 
+section('an image shape keeps its artwork (fill → src)')
+step = 'image'
+// a 1×1 PNG — the trap this guards: image shapes paint from `src`, so an artwork object handed
+// over as `fill` used to be dropped and leave an invisible shape on the canvas.
+const PIXEL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg=='
+const img = await callTool('create_shapes', {
+  projectId: PROJECT,
+  shapes: [{ type: 'image', name: 'MCP Pixel', x: 300, y: 60, w: 80, h: 80, fill: { type: 'image', src: PIXEL } }],
+})
+const imgId = img.created?.[0]
+ok(img.count === 1 && Boolean(imgId), `created an image shape (${img.count})`)
+await sleep(600)
+const imgDoc = await doc()
+ok(imgDoc.nodes[imgId]?.src === PIXEL, 'the fill image object was hoisted onto src')
+const painted = await page.locator(`img[data-node-id="${imgId}"]`).count()
+ok(painted === 1, `the artwork actually paints in the DOM (${painted} <img>)`)
+await shot('image')
+await callTool('delete_shapes', { projectId: PROJECT, ids: [imgId] })
+await sleep(600)
+
 section('export_shapes renders the selection back')
 step = 'export'
 const exp = await callTool('export_shapes', { projectId: PROJECT, ids: [frameId], kinds: ['svg', 'png', 'code'] })
