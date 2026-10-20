@@ -116,11 +116,17 @@ state lives in `localStorage`, right in your browser.
 - Vector: **SVG**, plus a hand-written PostScript writer — **EPS** (and `.ai` interop) with solid
   fills, PS shading for gradients, rounded corners, embedded rasters and Helvetica text. Both are
   print formats: After Effects imports them as **one flat image**, so they are not the motion path
+- **Native** (After Effects): a zip with `import-native.jsx` — run it with *File ▸ Scripts ▸ Run
+  Script File…* and it **builds** the design as real AE layers: text layers you can double-click and
+  retype, shape layers with editable rect/ellipse paths, fills, strokes, corner roundness, Drop
+  Shadow effects and two-stop Gradient Ramp effects. Icons, logos, photos and complex gradients
+  arrive as transparent PNGs on their own layers. No interchange file can do this — AI/EPS flatten,
+  SVG drops text — so the layers are constructed from `scene.json` instead
 - **Layers** (After Effects): a zip with one transparent, full-frame PNG per layer
-  (`layers/01 Name.png`…), a `layers.json` manifest (frame size, names, boxes, text properties) and
-  `IMPORT-AFTER-EFFECTS.txt`. Drop the PNGs into a comp of that size and every layer lands already
-  in position — this is the only import that keeps colours, gradients, icons and type as separate
-  layers. AI/EPS/SVG all lose text (and SVG loses raster artwork) on import
+  (`layers/01 Name.png`…), a `layers.json` manifest (frame size, names, boxes, text properties),
+  `import.jsx` and `IMPORT-AFTER-EFFECTS.txt`. Drop the PNGs into a comp of that size and every layer
+  lands already in position. Pixel-exact, but raster — use it when a shadow/filter/pattern must look
+  identical, or when you want one import that needs no scripting
 - **Code**: right-click ▸ Copy as ▸ Code, or Export menu — produces a React component styled with
   **Tailwind** (+ inline style only where Tailwind can't express gradients/filters/typography);
   the Export menu variant ships a **zip** with `Component.tsx` plus real `assets/image-N.png` files

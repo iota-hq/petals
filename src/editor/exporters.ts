@@ -504,14 +504,29 @@ every layer exactly as drawn — colours, gradients, icons and type included.
 Each file in layers/ is the whole frame, transparent except for its own layer, so
 every image is already sitting in the right place.
 
-Import into After Effects
--------------------------
+Import into After Effects — one step
+------------------------------------
+1. Unzip this folder somewhere and leave import.jsx next to layers/.
+2. In After Effects: File > Scripts > Run Script File... and pick import.jsx.
+   It creates a comp at the right size and adds every PNG in stack order, each
+   one already in position. Nothing to drag, nothing to nudge.
+
+By hand (same result)
+---------------------
 1. File > Import > File, select every PNG in layers/ (or the folder).
 2. Create a composition the size given in layers.json (frame.width x frame.height),
    or just drag all the footage items onto a comp of that size.
 3. Stack order: 01 is the back-most layer, then 02, 03, ... Reorder in the timeline
    to match — each layer is already positioned, so no nudging is needed.
 4. Keep "Continuously Rasterize" off: these are rasters.
+
+The files
+---------
+- layers/NN Name.png — one full-frame transparent PNG per layer (this is the artwork)
+- import.jsx          — the one-step importer (builds the comp + stack)
+- layers.json         — the manifest: frame size, layer names, boxes, text properties
+                        (import.jsx has everything inlined, so nothing reads this)
+- this file
 
 what becomes a layer
 --------------------
@@ -561,8 +576,540 @@ export async function exportSelectionLayers(scale = 1) {
     })),
   }
   files.push({ name: 'layers.json', data: new TextEncoder().encode(JSON.stringify(manifest, null, 2)) })
+  files.push({ name: 'import.jsx', data: new TextEncoder().encode(buildLayersJSX(name, manifest)) })
   files.push({ name: 'IMPORT-AFTER-EFFECTS.txt', data: new TextEncoder().encode(LAYERS_HELP) })
   download(buildZipArchive(files), `${name}-layers.zip`)
+}
+
+/**
+ * The one-step importer shipped inside the zip. It builds the comp and adds every PNG in
+ * stack order, so nothing is placed by hand. All metadata is inlined — no file reads — because
+ * both AE and EffectCraft restrict script file access.
+ */
+function buildLayersJSX(name: string, manifest: { frame: { width: number; height: number }; layers: Array<{ file: string; name: string }> }): string {
+  return `// Petals layered import — builds the comp and adds every layer in order.
+// File > Scripts > Run Script File... and pick this file (it reads layers/ next to itself).
+(function () {
+  var data = ${JSON.stringify({ name, frame: manifest.frame, layers: manifest.layers.map((l) => ({ file: l.file, name: l.name })) })};
+  app.beginUndoGroup('Petals layers');
+  var dir = (new File($.fileName)).parent;
+  var comp = app.project.items.addComp(data.name + ' (Petals)', data.frame.width, data.frame.height, 1, 10, 30);
+  var folder = null;
+  try { folder = app.project.items.addFolder(data.name + ' layers'); } catch (e) {}
+  for (var i = 0; i < data.layers.length; i++) {
+    var l = data.layers[i];
+    var f = new File(dir.fsName + '/' + l.file);
+    var io = new ImportOptions(f);
+    io.importAs = ImportAsType.FOOTAGE;
+    var item = app.project.importFile(io);
+    item.name = l.name;
+    if (folder) { try { item.parentFolder = folder; } catch (e) {} }
+    var lay = comp.layers.add(item);
+    lay.name = l.name;
+    try { lay.position.setValue([data.frame.width / 2, data.frame.height / 2]); } catch (e) {}
+  }
+  try { comp.openInViewer(); } catch (e) {}
+  app.endUndoGroup();
+  return comp;
+})();
+`
+}
+
+/* ------------------------------ native (editable) ------------------------------ */
+
+type Rgba = [number, number, number, number]
+
+/** CSS colour → the 0..1 [r,g,b,a] tuple ExtendScript wants. */
+function rgbaOf(color: string | undefined): Rgba {
+  const c = (color ?? '').trim()
+  const hex = /^#([0-9a-f]{3,8})$/i.exec(c)
+  if (hex) {
+    const h = hex[1]
+    const p = (i: number, len: number) => parseInt(len === 1 ? h[i] + h[i] : h.slice(i, i + 2), 16) / 255
+    if (h.length === 3 || h.length === 4) return [p(0, 1), p(1, 1), p(2, 1), h.length === 4 ? p(3, 1) : 1]
+    if (h.length === 6 || h.length === 8) return [p(0, 2), p(2, 2), p(4, 2), h.length === 8 ? p(6, 2) : 1]
+  }
+  const m = /^rgba?\(([^)]+)\)$/i.exec(c)
+  if (m) {
+    const n = m[1].split(/[,/\s]+/).filter(Boolean).map(Number)
+    return [(n[0] ?? 0) / 255, (n[1] ?? 0) / 255, (n[2] ?? 0) / 255, Number.isFinite(n[3]) ? n[3] : 1]
+  }
+  // named colours and anything else: let the browser normalise it
+  const ctx = document.createElement('canvas').getContext('2d')
+  if (ctx) {
+    ctx.fillStyle = '#000000'
+    ctx.fillStyle = c
+    const v = String(ctx.fillStyle)
+    if (v && v !== c && v !== '#000000') return rgbaOf(v)
+  }
+  return [0, 0, 0, 1]
+}
+
+const visibleFill = (s: Shape) =>
+  typeof s.fill === 'string' ? !!s.fill && s.fill !== 'none' && s.fill !== 'transparent' : !!s.fill
+
+function paintsShape(s: Shape): boolean {
+  if (!s.visible) return false
+  if (s.type === 'text') return !!s.text?.trim()
+  if (s.type === 'image') return !!s.src
+  if (s.type === 'line') return !!s.stroke && (s.strokeWidth ?? 1) > 0
+  return visibleFill(s) || (!!s.stroke && (s.strokeWidth ?? 1) > 0) || !!s.shadows?.length
+}
+
+function cornerRadiusOf(s: Shape): number {
+  if (s.radii) return Math.max(s.radii.tl, s.radii.tr, s.radii.br, s.radii.bl)
+  return s.radius ?? 0
+}
+
+/** How far a raster layer must be padded so its shadows are not cut off. */
+function shadowPad(s: Shape): number {
+  let pad = 0
+  for (const sh of s.shadows ?? []) pad = Math.max(pad, Math.abs(sh.x) + Math.abs(sh.y) + sh.blur * 2 + (sh.spread ?? 0))
+  return Math.ceil(pad)
+}
+
+/**
+ * The fill of a native shape. Solid paints stay vector; a linear/radial gradient with two
+ * stops becomes a Gradient Ramp effect (the layer alpha keeps it inside the path); anything
+ * richer (conic, 3+ stops, pattern, image paint) is rasterised so the look survives.
+ */
+type NativeFill =
+  | { solid: Rgba }
+  | { gradient: { kind: 'linear' | 'radial'; angle: number; stops: Array<{ color: Rgba; pos: number }> } }
+
+function nativeFillOf(s: Shape): NativeFill | 'raster' | null {
+  const f = s.fill
+  if (!f) return null
+  if (typeof f === 'string') return f && f !== 'none' && f !== 'transparent' ? { solid: rgbaOf(f) } : null
+  if (f.type === 'linear' || f.type === 'radial') {
+    if (f.stops.length > 2) return 'raster'
+    const stops = [...f.stops].sort((a, b) => a.pos - b.pos)
+    return {
+      gradient: {
+        kind: f.type,
+        angle: f.angle ?? 180,
+        stops: stops.map((st) => ({ color: rgbaOf(withAlpha(st.color, st.alpha)), pos: st.pos })),
+      },
+    }
+  }
+  return 'raster'
+}
+
+interface NativeShapeLayer {
+  kind: 'shape'
+  name: string
+  x: number
+  y: number
+  w: number
+  h: number
+  rotation: number
+  opacity: number
+  geom: 'rect' | 'ellipse'
+  radius?: number
+  fill?: NativeFill
+  stroke?: { color: Rgba; width: number }
+  shadow?: { color: Rgba; direction: number; distance: number; softness: number }
+}
+
+interface NativeTextLayer {
+  kind: 'text'
+  name: string
+  x: number
+  y: number
+  w: number
+  h: number
+  rotation: number
+  opacity: number
+  text: string
+  font: string
+  fontSize: number
+  leading: number
+  tracking: number
+  align: string
+  color: Rgba
+}
+
+interface NativeImageLayer {
+  kind: 'image'
+  name: string
+  x: number
+  y: number
+  w: number
+  h: number
+  opacity: number
+  file: string
+  pxW: number
+  pxH: number
+}
+
+type NativeLayer = NativeShapeLayer | NativeTextLayer | NativeImageLayer
+
+interface NativeScene {
+  format: 'petals-native@1'
+  name: string
+  frame: { width: number; height: number }
+  layers: NativeLayer[]
+}
+
+const NATIVE_HELP = `Native After Effects export from Petals
+=======================================
+
+This is not an import of pictures: import-native.jsx BUILDS the design as real After
+Effects layers.
+
+  1. Unzip this folder somewhere (keep import.jsx... this one: import-native.jsx next to
+     images/ and scene.json).
+  2. After Effects: File > Scripts > Run Script File... and pick import-native.jsx.
+  3. It creates a comp at the frame size and builds every layer, bottom to top.
+
+What is native
+--------------
+- Text        real text layers. Double-click and type; font, size, leading, tracking,
+              colour, alignment and the measured box are already set.
+- Rectangles  shape layers with a Rect path: size, corner roundness, fill and stroke are
+  / ellipses   editable in the shape's Contents, exactly like a hand-drawn shape layer.
+- Two-stop    linear/radial gradients become a Gradient Ramp effect on the shape layer,
+  gradients   so the colours stay editable in the Effect Controls panel.
+- Shadows     a Drop Shadow effect (colour, direction, distance, softness), so it can be
+              retimed or animated.
+
+What arrives as an image
+------------------------
+- Icons, logos and photos (they are raster artwork in the design too).
+- Conic gradients, pattern fills, and gradients with 3+ stops (After Effects' scriptable
+  ramp only takes two stops).
+- Shapes with inner shadows.
+Those get a transparent PNG cropped to their own box, placed as a footage layer, so the
+look is exact even though the pixels are not vector.
+
+Known differences
+-----------------
+- After Effects has no groups: nested frames become a shape layer with their children as
+  layers above them. The stack is the same as the canvas.
+- Clipping on a frame is not carried over; keep that in mind if a child overflows.
+- A font that is not installed is substituted; the script prints which ones it changed.
+`
+
+/**
+ * Native export: a JSX builder plus raster fallbacks for the few things After Effects
+ * cannot express natively. This is the only route that produces editable text and shape
+ * layers — no interchange file (AI/EPS/SVG/PSD) carries editable type into AE.
+ */
+export async function exportSelectionNative() {
+  const snap = collectSelection()
+  if (!snap) return
+  const { nodes, roots } = snap
+  const name = sanitizeName(nodes[roots[0]]?.name, 'petals-export')
+  const frame = boundsOfRects(roots.map((id) => pageAABB(nodes, nodes[id])))
+  if (!frame) return
+
+  const layers: NativeLayer[] = []
+  const rasters: Array<{ layer: NativeImageLayer; shape: Shape; box: Rect; pad: number }> = []
+  const srcs = new Set<string>()
+  for (const s of flatSelection(snap)) {
+    if (s.src) srcs.add(s.src)
+    if (typeof s.fill === 'object' && s.fill.type === 'image' && s.fill.src) srcs.add(s.fill.src)
+  }
+  const cache = new Map<string, HTMLImageElement | null>()
+  await Promise.all(Array.from(srcs).map(async (src) => cache.set(src, await loadImage(src))))
+
+  const push = (s: Shape, box: Rect): NativeLayer | null => {
+    const x = box.x - frame.x
+    const y = box.y - frame.y
+    const base = { name: s.name, x, y, w: box.w, h: box.h, rotation: s.rotation ?? 0, opacity: s.opacity ?? 1 }
+
+    if (s.type === 'text') {
+      const fontSize = s.fontSize ?? 24
+      const weight = s.fontWeight ?? 500
+      const style = weight >= 700 ? 'Bold' : weight >= 600 ? 'SemiBold' : weight >= 500 ? 'Medium' : 'Regular'
+      const family = (s.fontFamily ?? 'Inter').replace(/["']/g, '').split(',')[0].trim()
+      const layer: NativeTextLayer = {
+        kind: 'text',
+        ...base,
+        text: s.text ?? '',
+        font: `${family}-${style}`,
+        fontSize,
+        leading: fontSize * (s.lineHeight ?? 1.4),
+        tracking: fontSize ? ((s.letterSpacing ?? 0) / fontSize) * 1000 : 0,
+        align: s.align ?? 'left',
+        color: rgbaOf(s.color ?? '#000000'),
+      }
+      layers.push(layer)
+      return layer
+    }
+
+    // a straight line is a rotated rectangle: native, resizable, and no fake geometry
+    if (s.type === 'line') {
+      const e = lineEnds(s)
+      const x1 = e.x1
+      const y1 = e.y1
+      const x2 = e.x2
+      const y2 = e.y2
+      const len = Math.hypot(x2 - x1, y2 - y1) || 1
+      const th = s.strokeWidth ?? 1
+      const cx = (x1 + x2) / 2
+      const cy = (y1 + y2) / 2
+      const layer: NativeShapeLayer = {
+        kind: 'shape',
+        ...base,
+        x: cx - len / 2 - frame.x,
+        y: cy - th / 2 - frame.y,
+        w: len,
+        h: th,
+        rotation: (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI,
+        geom: 'rect',
+        fill: { solid: rgbaOf(s.stroke) },
+      }
+      layers.push(layer)
+      return layer
+    }
+
+    const fill = nativeFillOf(s)
+    const gradWithStroke = fill === 'raster' || (fill && 'gradient' in fill && s.stroke)
+    const needsRaster = s.type === 'image' || !!s.src || !!s.pattern || !!imagePaintOf(s) || fill === 'raster' || !!gradWithStroke
+    if (needsRaster) return null // handled by the raster pass
+
+    const sh = s.shadows?.[0]
+    const layer: NativeShapeLayer = {
+      kind: 'shape',
+      ...base,
+      geom: s.type === 'ellipse' ? 'ellipse' : 'rect',
+      radius: s.type === 'ellipse' ? undefined : cornerRadiusOf(s),
+      fill: fill ?? undefined,
+      stroke: s.stroke ? { color: rgbaOf(s.stroke), width: s.strokeWidth ?? 1 } : undefined,
+      shadow: sh
+        ? {
+            color: [rgbaOf(sh.color)[0], rgbaOf(sh.color)[1], rgbaOf(sh.color)[2], withAlphaAlpha(sh.color)],
+            direction: (((90 + (Math.atan2(sh.y, sh.x) * 180) / Math.PI) % 360) + 360) % 360,
+            distance: Math.hypot(sh.x, sh.y),
+            softness: sh.blur * 0.5,
+          }
+        : undefined,
+    }
+    layers.push(layer)
+    return layer
+  }
+
+  const visit = (s: Shape, ox: number, oy: number) => {
+    if (!s.visible) return
+    const box = absBox(s, ox, oy)
+    if (!paintsShape(s)) {
+      // nothing of its own to draw, but its children still are layers
+    } else {
+      const made = push(s, box)
+      if (!made) {
+        const pad = shadowPad(s)
+        const layer: NativeImageLayer = {
+          kind: 'image',
+          name: s.name,
+          x: box.x - frame.x - pad,
+          y: box.y - frame.y - pad,
+          w: box.w + pad * 2,
+          h: box.h + pad * 2,
+          opacity: s.opacity ?? 1,
+          file: '',
+          pxW: 0,
+          pxH: 0,
+        }
+        layers.push(layer)
+        rasters.push({ layer, shape: s, box, pad })
+      }
+    }
+    const off = childOffset(s, ox, oy)
+    for (const kid of childrenSortedOf(nodes, s.id)) visit(kid, off.ox, off.oy)
+  }
+  for (const id of roots) visit(nodes[id], 0, 0)
+
+  const files: Array<{ name: string; data: Uint8Array }> = []
+  for (const r of rasters) {
+    const scale = Math.max(1, Math.min(2, Math.round(512 / Math.max(r.box.w, r.box.h, 1))))
+    const w = Math.max(1, Math.ceil((r.box.w + r.pad * 2) * scale))
+    const h = Math.max(1, Math.ceil((r.box.h + r.pad * 2) * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    if (!ctx) continue
+    ctx.scale(scale, scale)
+    ctx.translate(-(r.box.x - r.pad), -(r.box.y - r.pad))
+    const off = offsetForParent(nodes, r.shape.parentId)
+    await paintShape(ctx, nodes, r.shape, cache, off.x, off.y)
+    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'))
+    if (!blob) continue
+    const i = layers.indexOf(r.layer)
+    const file = `images/${String(i + 1).padStart(2, '0')} ${sanitizeName(r.shape.name, 'layer')}.png`
+    r.layer.file = file
+    r.layer.pxW = w
+    r.layer.pxH = h
+    files.push({ name: file, data: new Uint8Array(await blob.arrayBuffer()) })
+  }
+
+  const scene: NativeScene = {
+    format: 'petals-native@1',
+    name,
+    frame: { width: Math.round(frame.w), height: Math.round(frame.h) },
+    layers,
+  }
+  files.push({ name: 'scene.json', data: new TextEncoder().encode(JSON.stringify(scene, null, 2)) })
+  files.push({ name: 'import-native.jsx', data: new TextEncoder().encode(buildNativeJSX(scene)) })
+  files.push({ name: 'README.txt', data: new TextEncoder().encode(NATIVE_HELP) })
+  download(buildZipArchive(files), `${name}-native.zip`)
+}
+
+/** Alpha of a CSS colour (0..1), used for the shadow effect's opacity. */
+function withAlphaAlpha(color: string): number {
+  const c = rgbaOf(color)
+  return c[3]
+}
+
+/**
+ * The builder shipped in the zip. ExtendScript is ES3, so: var only, no arrows, no template
+ * strings, try/catch around everything the host may not implement.
+ */
+function buildNativeJSX(scene: NativeScene): string {
+  return `// Petals native import — builds editable layers, not flat pictures.
+// File > Scripts > Run Script File... and pick this file (it reads images/ next to itself).
+(function () {
+  var data = ${JSON.stringify(scene)};
+  var report = { shapes: 0, texts: 0, images: 0, warnings: [] };
+  app.beginUndoGroup('Petals native import');
+  var dir = (new File($.fileName)).parent.fsName;
+  var comp = app.project.items.addComp(data.name + ' (Petals)', data.frame.width, data.frame.height, 1, 10, 30);
+  var folder = null;
+
+  function warn(msg) { report.warnings.push(msg); }
+
+  function place(layer, d, ax, ay, px, py) {
+    var t = layer.property('Transform');
+    try { t.property('Anchor Point').setValue([ax, ay]); } catch (e) {}
+    t.property('Position').setValue([px, py]);
+    if (d.rotation) { try { t.property('Rotation').setValue(d.rotation); } catch (e) {} }
+    if (d.opacity !== 1) { try { t.property('Opacity').setValue(d.opacity * 100); } catch (e) {} }
+  }
+
+  function addShape(d) {
+    var l = comp.layers.addShape();
+    l.name = d.name;
+    var c = l.property('Contents');
+    if (d.geom === 'ellipse') {
+      var el = c.addProperty('ADBE Vector Shape - Ellipse');
+      el.property('ADBE Vector Ellipse Size').setValue([d.w, d.h]);
+    } else {
+      var r = c.addProperty('ADBE Vector Shape - Rect');
+      r.property('ADBE Vector Rect Size').setValue([d.w, d.h]);
+      if (d.radius) {
+        try { r.property('ADBE Vector Rect Roundness').setValue(d.radius); }
+        catch (e) { warn('corner radius not applied: ' + d.name); }
+      }
+    }
+    if (d.fill && d.fill.solid) {
+      var f = c.addProperty('ADBE Vector Graphic - Fill');
+      f.property('ADBE Vector Fill Color').setValue(d.fill.solid);
+    }
+    if (d.fill && d.fill.gradient) {
+      var g = d.fill.gradient;
+      var base = c.addProperty('ADBE Vector Graphic - Fill');
+      base.property('ADBE Vector Fill Color').setValue([1, 1, 1, 1]);
+      var ramp = l.Effects.addProperty('ADBE Ramp');
+      ramp.property('Start Color').setValue(g.stops[0].color);
+      ramp.property('End Color').setValue(g.stops[g.stops.length - 1].color);
+      if (g.kind === 'radial') {
+        ramp.property('Ramp Shape').setValue(2);
+        ramp.property('Start of Ramp').setValue([0, 0]);
+        ramp.property('End of Ramp').setValue([Math.max(d.w, d.h) / 2, 0]);
+      } else {
+        var rad = (g.angle * Math.PI) / 180;
+        var dx = Math.sin(rad);
+        var dy = -Math.cos(rad);
+        var half = (Math.abs(d.w * dx) + Math.abs(d.h * dy)) / 2;
+        ramp.property('Start of Ramp').setValue([-dx * half, -dy * half]);
+        ramp.property('End of Ramp').setValue([dx * half, dy * half]);
+      }
+    }
+    if (d.stroke && d.stroke.width > 0) {
+      var s = c.addProperty('ADBE Vector Graphic - Stroke');
+      s.property('ADBE Vector Stroke Color').setValue(d.stroke.color);
+      s.property('ADBE Vector Stroke Width').setValue(d.stroke.width);
+    }
+    if (d.shadow) {
+      var ds = l.Effects.addProperty('ADBE Drop Shadow');
+      ds.property('Shadow Color').setValue([d.shadow.color[0], d.shadow.color[1], d.shadow.color[2], 1]);
+      ds.property('Opacity').setValue(d.shadow.color[3] * 100);
+      ds.property('Direction').setValue(d.shadow.direction);
+      ds.property('Distance').setValue(d.shadow.distance);
+      ds.property('Softness').setValue(d.shadow.softness);
+    }
+    place(l, d, 0, 0, d.x + d.w / 2, d.y + d.h / 2);
+    report.shapes++;
+  }
+
+  function addText(d) {
+    var l = comp.layers.addText(d.text);
+    l.name = d.name;
+    var src = l.property('Text').property('Source Text');
+    var doc = src.value;
+    var families = [d.font, d.font.split('-')[0], 'ArialMT', 'Arial'];
+    for (var i = 0; i < families.length; i++) {
+      try { doc.font = families[i]; break; } catch (e) {}
+    }
+    doc.fontSize = d.fontSize;
+    doc.leading = d.leading;
+    doc.tracking = d.tracking;
+    doc.fillColor = [d.color[0], d.color[1], d.color[2]];
+    try { doc.applyFill = true; } catch (e) {}
+    try {
+      doc.justification = d.align === 'center' ? ParagraphJustification.CENTER_JUSTIFY
+        : d.align === 'right' ? ParagraphJustification.RIGHT_JUSTIFY
+        : d.align === 'justify' ? ParagraphJustification.FULL_JUSTIFY
+        : ParagraphJustification.LEFT_JUSTIFY;
+    } catch (e) {}
+    try {
+      doc.boxText = true;
+      doc.boxTextSize = [d.w, d.h];
+      doc.boxTextPos = [0, 0];
+    } catch (e) { warn('text box not applied: ' + d.name); }
+    src.setValue(doc);
+    place(l, d, d.w / 2, d.h / 2, d.x + d.w / 2, d.y + d.h / 2);
+    report.texts++;
+  }
+
+  function addImage(d) {
+    var io = new ImportOptions(new File(dir + '/' + d.file));
+    io.importAs = ImportAsType.FOOTAGE;
+    var item = app.project.importFile(io);
+    item.name = d.name;
+    if (!folder) {
+      try { folder = app.project.items.addFolder(data.name + ' assets'); } catch (e) { folder = null; }
+    }
+    if (folder) { try { item.parentFolder = folder; } catch (e) {} }
+    var l = comp.layers.add(item);
+    l.name = d.name;
+    var t = l.property('Transform');
+    try { t.property('Anchor Point').setValue([d.pxW / 2, d.pxH / 2]); } catch (e) {}
+    t.property('Position').setValue([d.x + d.w / 2, d.y + d.h / 2]);
+    t.property('Scale').setValue([(d.w / d.pxW) * 100, (d.h / d.pxH) * 100]);
+    if (d.opacity !== 1) { try { t.property('Opacity').setValue(d.opacity * 100); } catch (e) {} }
+    report.images++;
+  }
+
+  for (var i = 0; i < data.layers.length; i++) {
+    var d = data.layers[i];
+    try {
+      if (d.kind === 'text') addText(d);
+      else if (d.kind === 'image') addImage(d);
+      else addShape(d);
+    } catch (e) {
+      warn(d.name + ': ' + e);
+    }
+  }
+
+  try { comp.openInViewer(); } catch (e) {}
+  app.endUndoGroup();
+  var out = ['Petals: ' + report.shapes + ' shape, ' + report.texts + ' text, ' + report.images + ' image layers'];
+  for (var w = 0; w < report.warnings.length; w++) out.push('  ! ' + report.warnings[w]);
+  writeLn(out.join('\\n'));
+})();
+`
 }
 
 /* ------------------------------ SVG ------------------------------ */

@@ -138,6 +138,7 @@ const files = readZip(readFileSync(zipPath))
 const pngs = [...files.keys()].filter((n) => n.startsWith('layers/') && n.endsWith('.png'))
 ok(pngs.length === 4, `four layer PNGs (${pngs.length})`)
 ok(files.has('layers.json'), 'manifest present')
+ok(files.has('import.jsx'), 'one-step importer present')
 ok(files.has('IMPORT-AFTER-EFFECTS.txt'), 'import notes present')
 
 const manifest = JSON.parse(files.get('layers.json').toString('utf8'))
@@ -161,6 +162,16 @@ ok(
   'entries are real PNGs',
 )
 ok(pngs.every((n, i) => /^\d\d /.test(n.split('/')[1]) && n.split('/')[1].startsWith(String(i + 1).padStart(2, '0'))), 'files are numbered in stack order')
+
+// the importer must be self-contained: no Folder.getFiles, no manifest read, every layer inlined
+const jsx = files.get('import.jsx').toString('utf8')
+ok(/addComp\(/.test(jsx) && /ImportAsType\.FOOTAGE/.test(jsx), 'importer builds a comp and imports footage')
+ok(!/getFiles|\.read\(/.test(jsx), 'importer reads nothing from disk')
+ok(pngs.every((n) => jsx.includes(n)), 'importer lists every PNG')
+ok(
+  jsx.includes(String(Math.round(manifest.frame.width))) && jsx.includes(String(Math.round(manifest.frame.height))),
+  `importer knows the frame size (${Math.round(manifest.frame.width)}×${Math.round(manifest.frame.height)})`,
+)
 
 console.log(`\nconsole/page errors: ${errors.length}`)
 for (const e of errors.slice(0, 6)) console.log('  ', e.slice(0, 200))

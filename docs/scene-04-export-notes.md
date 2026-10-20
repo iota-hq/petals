@@ -112,15 +112,31 @@ The causes are in the formats, not in the drawing:
    entirely — it asks for text as curves. Our SVG also embeds icons as `<image>` data URLs, and
    raster content is not supported in an SVG composition import, so icons would go too.
 
-So the layered route is **Export ▸ Layers**: one transparent, full-frame PNG per layer plus
-`layers.json` and `IMPORT-AFTER-EFFECTS.txt`. Every PNG is the whole artboard, so the layers need no
-positioning — import them all into a comp the size in the manifest and the stack (01 at the back)
-matches the design. Text is rasterised with the design's font: pixel-correct, but not an editable
-text layer, because no interchange format carries editable text into After Effects.
+So there are two layered routes out of Petals. **Export ▸ Layers** writes one transparent,
+full-frame PNG per layer plus `layers.json` and `IMPORT-AFTER-EFFECTS.txt`: every PNG is the whole
+artboard, so nothing needs positioning, and the result is pixel-exact (shadows, filters, patterns
+included) but raster.
 
-The trade-off is honest: layers are rasters rather than vectors. A vector alternative (SVG per
-layer) only pays off once text can be outlined to paths *and* icon artwork is inlined as geometry
-instead of `<image>`; that is a separate piece of work, not a format choice.
+## Native layers: building them instead of importing them
+
+No interchange format carries editable type into After Effects, so the only way to get native layers
+is to construct them through the AE object model. **Export ▸ Native** ships `scene.json` plus
+`import-native.jsx`; running it (*File ▸ Scripts ▸ Run Script File…*) creates the comp and builds
+each layer:
+
+| design | in After Effects |
+| --- | --- |
+| text | text layer — source text, font, size, leading, tracking, fill colour, alignment, measured box (verified via `props`: `text/sourceText "Editable text"`) |
+| rect / frame / ellipse | shape layer with Rect/Ellipse path, roundness, fill and stroke in Contents |
+| 2-stop linear/radial gradient | Gradient Ramp effect on the shape layer (Start/End Color and ramp points are editable) |
+| box shadow | Drop Shadow effect (colour, direction, distance, softness) |
+| icon / logo / photo | footage layer: a transparent PNG cropped to its own box (raster in the design too) |
+| conic or 3+ stop gradient, pattern fill, inner shadow | footage layer — the scriptable ramp only takes two stops |
+
+Scene 04 comes out as **11 shape + 11 text + 8 image layers**, and the EffectCraft render of that
+comp matches the Petals PNG. Known differences: AE has no groups (a nested frame becomes a shape
+layer with its children above it), frame clipping is not reproduced, and a font that is not
+installed is substituted (the script prints what it changed).
 
 ## Re-exporting
 
