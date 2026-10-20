@@ -40,13 +40,51 @@ function Hint({
   children,
   side = 'bottom',
   delay = 250,
+  hoverOnly = false,
 }: {
   label: React.ReactNode
   children: React.ReactNode
   side?: 'top' | 'bottom' | 'left' | 'right'
   /** ms of hover before it appears; a roomy default keeps a swept-over grid quiet */
   delay?: number
+  /** ignore focus: for fields, where a tooltip over the value you are typing into is in the way */
+  hoverOnly?: boolean
 }) {
+  const [open, setOpen] = React.useState(false)
+  const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const clear = () => {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = null
+  }
+  React.useEffect(() => clear, [])
+
+  if (hoverOnly) {
+    return (
+      <TooltipPrimitive.Provider>
+        <TooltipPrimitive.Root open={open} onOpenChange={() => {}}>
+          <TooltipPrimitive.Trigger
+            asChild
+            onMouseEnter={() => {
+              clear()
+              timer.current = setTimeout(() => setOpen(true), delay)
+            }}
+            onMouseLeave={() => {
+              clear()
+              setOpen(false)
+            }}
+            onPointerDown={() => {
+              clear()
+              setOpen(false)
+            }}
+          >
+            {children}
+          </TooltipPrimitive.Trigger>
+          <TooltipContent side={side}>{label}</TooltipContent>
+        </TooltipPrimitive.Root>
+      </TooltipPrimitive.Provider>
+    )
+  }
+
   return (
     <TooltipPrimitive.Provider delayDuration={delay}>
       <TooltipPrimitive.Root>

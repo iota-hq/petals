@@ -26,6 +26,7 @@ import {
   Frame as FrameIcon,
   Gauge,
   Grid2x2,
+  LayoutGrid,
   Hash,
   Hexagon,
   Image as ImageIcon,
@@ -294,6 +295,18 @@ const clampField = (v: number, min?: number, max?: number) => {
   return v
 }
 
+/** Inspector inputs select their whole value on focus: one click, then typing replaces it. */
+function selectAllOnFocus(e: React.FocusEvent<HTMLInputElement>) {
+  const el = e.currentTarget
+  requestAnimationFrame(() => {
+    try {
+      el.select()
+    } catch {
+      /* detached by then */
+    }
+  })
+}
+
 function NumField({
   label,
   unit,
@@ -389,33 +402,38 @@ function NumField({
           {label}
         </span>
       )}
-      <Input
-        type="text"
-        inputMode="decimal"
-        aria-label={ariaLabel}
-        disabled={disabled}
-        className="h-6 w-full min-w-0 border-0 bg-transparent px-0 text-[13px] font-medium shadow-none focus-visible:ring-0"
-        value={editing ?? String(display)}
-        onFocus={() => setEditing(String(display))}
-        onChange={(e) => setEditing(e.target.value)}
-        onBlur={() => {
-          if (editing !== null) {
-            const d = parseFloat(editing)
-            if (Number.isFinite(d)) {
-              const stored = clampField(d / scale, min, max)
-              if (stored !== value) onCommit(stored)
+      <Hint label={`${ariaLabel ?? label ?? 'Value'}: ${display}${unit ? ` ${unit}` : ''}`} delay={3000} hoverOnly>
+        <Input
+          type="text"
+          inputMode="decimal"
+          aria-label={ariaLabel}
+          disabled={disabled}
+          className="h-6 w-full min-w-0 border-0 bg-transparent px-0 text-[13px] font-medium shadow-none focus-visible:ring-0"
+          value={editing ?? String(display)}
+          onFocus={(e) => {
+            setEditing(String(display))
+            selectAllOnFocus(e)
+          }}
+          onChange={(e) => setEditing(e.target.value)}
+          onBlur={() => {
+            if (editing !== null) {
+              const d = parseFloat(editing)
+              if (Number.isFinite(d)) {
+                const stored = clampField(d / scale, min, max)
+                if (stored !== value) onCommit(stored)
+              }
+              setEditing(null)
             }
-            setEditing(null)
-          }
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-          if (e.key === 'Escape') {
-            setEditing(null)
-            ;(e.target as HTMLInputElement).blur()
-          }
-        }}
-      />
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+            if (e.key === 'Escape') {
+              setEditing(null)
+              ;(e.target as HTMLInputElement).blur()
+            }
+          }}
+        />
+      </Hint>
       {unit && (
         <span
           className={
@@ -453,12 +471,22 @@ function ColorButton({ color, onClick, sm, label }: { color: string; onClick: (e
   )
 }
 
-/** Close popovers on outside pointerdown / Escape / scroll (fixed popovers detach on scroll). */
-function usePopoverDismiss(ref: React.RefObject<HTMLElement | null>, onClose: () => void, active: boolean) {
+/**
+ * Close popovers on outside pointerdown / Escape / scroll (fixed popovers detach on scroll).
+ * `ignore` is the trigger: a press on it must not close the popover first, or its own click
+ * would immediately reopen it — the trigger has to stay a toggle.
+ */
+function usePopoverDismiss(
+  ref: React.RefObject<HTMLElement | null>,
+  onClose: () => void,
+  active: boolean,
+  ignore?: React.RefObject<HTMLElement | null>,
+) {
   useEffect(() => {
     if (!active) return
     const onDown = (e: PointerEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+      const t = e.target as Node
+      if (ref.current && !ref.current.contains(t) && !(ignore?.current && ignore.current.contains(t))) onClose()
     }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
@@ -481,7 +509,10 @@ type PopFixed = ReturnType<typeof usePopFixed>
 function usePopFixed() {  const [open, setOpen] = useState(false)
   const [pos, setPos] = useState({ top: 0, left: 0 })
   const ref = useRef<HTMLDivElement | null>(null)
+  /** the element that opened it: pressing it again toggles instead of close-then-reopen */
+  const trigger = useRef<HTMLElement | null>(null)
   const toggle = (e: React.MouseEvent) => {
+    trigger.current = e.currentTarget as HTMLElement
     if (open) {
       setOpen(false)
       return
@@ -499,7 +530,7 @@ function usePopFixed() {  const [open, setOpen] = useState(false)
     })
     setOpen(true)
   }
-  usePopoverDismiss(ref, () => setOpen(false), open)
+  usePopoverDismiss(ref, () => setOpen(false), open, trigger)
   return { open, toggle, setOpen, pos, ref }
 }
 
@@ -534,6 +565,7 @@ function ColorPopover({
           aria-label="Hex"
           className="h-6 w-24 bg-[#2b2b2b] font-mono text-[11px] uppercase"
           value={hex}
+          onFocus={selectAllOnFocus}
           onChange={(e) => setHex(e.target.value)}
           onBlur={() => {
             const v = hexInTrim(hex)
@@ -688,6 +720,7 @@ function MiniSelect<T extends string>({
   onChange,
   disabled,
   disabledOptions,
+  className,
 }: {
   value: T
   options: readonly (readonly [T, string])[]
@@ -695,11 +728,13 @@ function MiniSelect<T extends string>({
   disabled?: boolean
   /** visually present but not selectable (coming-soon entries) */
   disabledOptions?: readonly T[]
+  /** overrides the default full-width wrapper, e.g. a short field for a two-value choice */
+  className?: string
 }) {
   const pop = usePopFixed()
   const label = options.find(([v]) => v === value)?.[1] ?? value
   return (
-    <div className="relative min-w-0 flex-1">
+    <div className={'relative ' + (className ?? 'min-w-0 flex-1')}>
       <button
         disabled={disabled}
         onClick={pop.toggle}
@@ -1129,6 +1164,7 @@ function FillField({ s }: { s: Shape }) {
                 ['cover', 'Cover'],
                 ['contain', 'Contain'],
               ]}
+              className="w-[112px] shrink-0"
               onChange={(v) => setFill({ ...image, fit: v }, 'Image fit')}
             />
           </Row>
@@ -1767,8 +1803,8 @@ function IconChoice<T extends string>({
 /** A heading inside a section, so a long set of controls reads as groups, not as a list. */
 function GroupLabel({ icon: I, children }: { icon: LucideIcon; children: ReactNode }) {
   return (
-    <p className="flex items-center gap-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/55">
-      <I size={11} />
+    <p className="flex items-center gap-1.5 pt-2.5 text-[13px] font-semibold tracking-[0.01em] text-foreground/90">
+      <I size={13} className="shrink-0 text-muted-foreground" />
       {children}
     </p>
   )
@@ -1877,9 +1913,9 @@ function PatternSection({
     <Section title="Pattern" open={!!p} onAdd={add} onRemove={remove}>
       {p && (
         <>
-          {/* The motifs themselves need no words: a thumbnail is the clearer name. */}
-          <div className="scrollbar-auto -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
-            {MOTIFS.map((m) => (
+          {/* Four motifs — the long tail lives in the library, one click away. */}
+          <div className="flex items-center gap-1.5 pb-1">
+            {MOTIFS.slice(0, 4).map((m) => (
               <Hint key={m.id} label={m.name}>
                 <button
                   aria-label={m.name}
@@ -1897,6 +1933,15 @@ function PatternSection({
                 </button>
               </Hint>
             ))}
+            <Hint label="View more">
+              <button
+                aria-label="View more patterns"
+                onClick={() => useUi.getState().requestLibrary('patterns')}
+                className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-md border border-dashed border-white/15 text-muted-foreground transition-colors hover:border-white/35 hover:text-foreground"
+              >
+                <LayoutGrid size={14} />
+              </button>
+            </Hint>
           </div>
 
           <GroupLabel icon={Grid2x2}>Grid</GroupLabel>
@@ -2463,6 +2508,7 @@ export function PropertiesPanel() {
             key={s.id}
             className="h-6 border-0 bg-transparent px-1 text-[13px] font-medium shadow-none focus-visible:bg-[#2b2b2b] focus-visible:ring-0"
             defaultValue={s.name}
+            onFocus={selectAllOnFocus}
             onBlur={(e) => {
               const v = e.target.value.trim()
               if (v && v !== s.name) setProps([s.id], { name: v }, 'Rename')
@@ -2725,6 +2771,7 @@ export function PropertiesPanel() {
                   ['cover', 'Cover'],
                   ['contain', 'Contain'],
                 ]}
+                className="w-[112px] shrink-0"
                 onChange={(v) => commitProp({ fit: v }, 'Image fit')}
               />
             </Row>
