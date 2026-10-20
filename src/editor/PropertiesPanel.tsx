@@ -65,7 +65,7 @@ import { recolorSvg, svgColors, svgDataUrl } from '@/lib/svg'
 import { useDoc, type Tx } from '@/store/docStore'
 import { useUi, DEFAULT_CANVAS_BG, setZoomAroundCenter } from '@/store/uiStore'
 import { fileToImageSrc, addImageFile, alignSelection, canvasEl, nudge, setProps, type AlignEdge } from './commands'
-import { exportSelectionCodeZip, exportSelectionEPS, exportSelectionPNG, exportSelectionRaster, exportSelectionSVG } from './exporters'
+import { exportSelectionCodeZip, exportSelectionEPS, exportSelectionLayers, exportSelectionPNG, exportSelectionRaster, exportSelectionSVG } from './exporters'
 import { IconBlur, IconBrightness, IconBoxShadow, IconContrast, IconConic, IconFlowFree, IconFlowH, IconFlowV, IconGap, IconGradientFill, IconGrayscale, IconHue, IconImageFill, IconInnerShadow, IconInvert, IconLinear, IconLetterSpacing, IconMargin, IconOpacity, IconRadial, IconRadius, IconRotate, IconSepia, IconSaturate, IconSolidFill, IconSpread, IconFontSize, IconLineHeight, IconStrokeWidth } from './proIcons'
 import { FontPicker, useGoogleFonts, type FontEntry } from './FontPicker'
 import { UndoRedoButtons } from './UndoRedoButtons'
@@ -2768,9 +2768,10 @@ function ExportMenu({ pop }: { pop: PopFixed }) {
     ['JPG', '2× raster', () => void exportSelectionRaster('jpeg', 2)],
     ['WEBP', '2× raster', () => void exportSelectionRaster('webp', 2)],
     ['AVIF', '2× raster', () => void exportSelectionRaster('avif', 2)],
+    ['Layers', 'PNG per layer · AE', () => void exportSelectionLayers(1)],
     ['SVG', 'Vector', () => void exportSelectionSVG()],
-    ['EPS', 'Vector · PostScript', () => void exportSelectionEPS(false)],
-    ['AI', 'Vector · Illustrator', () => void exportSelectionEPS(true)],
+    ['EPS', 'PostScript · flat in AE', () => void exportSelectionEPS(false)],
+    ['AI', 'Illustrator · flat in AE', () => void exportSelectionEPS(true)],
     ['TSX', 'React + Tailwind (zip)', () => void exportSelectionCodeZip()],
   ]
   return (
@@ -2803,6 +2804,10 @@ function ExportMenu({ pop }: { pop: PopFixed }) {
               <span className="text-[10px] font-normal text-muted-foreground">{sub}</span>
             </button>
           ))}
+          <div className="mt-1 border-t border-border/60 px-2.5 pb-0.5 pt-1.5 text-[10px] leading-snug text-muted-foreground">
+            After Effects flattens AI/EPS to one image — use{' '}
+            <span className="font-semibold text-foreground/80">Layers</span> for a layered comp.
+          </div>
         </div>
       )}
     </div>

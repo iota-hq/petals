@@ -2,7 +2,7 @@ import type { Gradient, ImageFill, Shape } from '@/model/types'
 
 /** Gradient narrowed to conic (Grad['type'] is itself a union, so plain Extract won't do). */
 type ConicGrad = Omit<Gradient, 'type'> & { type: 'conic' }
-import { boundsOfRects, lineEnds, pageAABB, roundedRectPath, selectionRoots, subtreeIds } from '@/model/geometry'
+import { boundsOfRects, lineEnds, offsetForParent, pageAABB, roundedRectPath, selectionRoots, subtreeIds } from '@/model/geometry'
 import type { Rect } from '@/model/geometry'
 import { cornersOf, fillToCss, filtersToCss, gradientVector, shadowToCss, withAlpha } from '@/model/styles'
 import { useDoc } from '@/store/docStore'
@@ -405,7 +405,7 @@ export async function rasterBlob(format: 'png' | 'jpeg' | 'webp' | 'avif', scale
   await Promise.all(Array.from(srcs).map(async (src) => cache.set(src, await loadImage(src))))
   for (const root of roots) {
     const s = nodes[root]
-    if (s) await paintShape(ctx, nodes, s, cache, 0, 0)
+    if (s) await paintShape(ctx, nodes, s, cache, -b.x, -b.y)
   }
 
   const blob = await new Promise<Blob | null>((res) => c.toBlob(res, RASTER[format], format === 'jpeg' ? 0.92 : undefined))
@@ -424,6 +424,145 @@ export async function exportSelectionRaster(format: 'png' | 'jpeg' | 'webp' | 'a
 /* keep the old external name working */
 export function exportSelectionPNG(scale = 2) {
   return exportSelectionRaster('png', scale)
+}
+
+/* ------------------------------ layered PNG (After Effects) ------------------------------ */
+
+/**
+ * One transparent, full-frame PNG per top-level layer.
+ *
+ * This is the shape a layered import actually needs: After Effects flattens AI/EPS to a
+ * single image, and its SVG import drops `<text>` and raster artwork. Full-frame PNGs keep
+ * every layer exactly as drawn and already in position, so they drop straight into a comp.
+ */
+export async function layerBlobs(scale = 1): Promise<{
+  frame: Rect
+  files: Array<{ name: string; blob: Blob; shape: Shape; box: Rect }>
+} | null> {
+  const snap = collectSelection()
+  if (!snap) return null
+  const { nodes, roots } = snap
+  const valid = flatSelection(snap)
+  const bounds = boundsOfRects(valid.map((s) => pageAABB(nodes, s)))
+  // the comp is the frame you selected — not the union of everything inside it, which would
+  // also swallow decoration that bleeds past the artboard
+  const frame = boundsOfRects(roots.map((id) => pageAABB(nodes, nodes[id])))
+  const b = frame
+  if (!b || b.w <= 0 || b.h <= 0 || !bounds) return null
+
+  const srcs = new Set(
+    valid.flatMap((i) => [i.src, typeof i.fill === 'object' && i.fill.type === 'image' ? i.fill.src : undefined]).filter(Boolean) as string[],
+  )
+  const cache = new Map<string, HTMLImageElement | null>()
+  await Promise.all(Array.from(srcs).map(async (src) => cache.set(src, await loadImage(src))))
+
+  // a frame's own paint is the bottom layer, then its direct children are the rest; a leaf
+  // selection is a single layer. A transparent artboard contributes no empty layer.
+  const paints = (s: Shape) =>
+    !!s.stroke ||
+    (Array.isArray(s.shadows) && s.shadows.length > 0) ||
+    (typeof s.fill === 'string' ? s.fill !== '' && s.fill !== 'none' && s.fill !== 'transparent' : !!s.fill)
+  const layers = roots.flatMap((id) => {
+    const s = nodes[id]
+    if (!s) return []
+    const kids = childrenSortedOf(nodes, s.id)
+    return kids.length ? [...(paints(s) ? [s] : []), ...kids] : [s]
+  })
+
+  const files: Array<{ name: string; blob: Blob; shape: Shape; box: Rect }> = []
+  for (const [i, s] of layers.entries()) {
+    if (!s || !s.visible || s.opacity === 0) continue
+    const c = document.createElement('canvas')
+    c.width = Math.max(1, Math.round(b.w * scale))
+    c.height = Math.max(1, Math.round(b.h * scale))
+    const ctx = c.getContext('2d')
+    if (!ctx) return null
+    ctx.scale(scale, scale)
+    // start at the layer's parent offset so nested coords land where they land on the canvas
+    const off = offsetForParent(nodes, s.parentId)
+    await paintShape(ctx, nodes, s, cache, off.x - b.x, off.y - b.y)
+    const blob = await new Promise<Blob | null>((res) => c.toBlob(res, 'image/png'))
+    if (!blob) continue
+    const box = pageAABB(nodes, s)
+    files.push({
+      name: `${String(i + 1).padStart(2, '0')} ${sanitizeName(s.name, 'layer')}.png`,
+      blob,
+      shape: s,
+      box: { x: box.x - b.x, y: box.y - b.y, w: box.w, h: box.h },
+    })
+  }
+  return { frame: b, files }
+}
+
+const LAYERS_HELP = `Layered PNG export from Petals
+==============================
+
+Why PNG: After Effects imports AI and EPS as a single flattened image, and its SVG
+import drops text and raster artwork. Full-frame PNGs are the one format that keeps
+every layer exactly as drawn — colours, gradients, icons and type included.
+
+Each file in layers/ is the whole frame, transparent except for its own layer, so
+every image is already sitting in the right place.
+
+Import into After Effects
+-------------------------
+1. File > Import > File, select every PNG in layers/ (or the folder).
+2. Create a composition the size given in layers.json (frame.width x frame.height),
+   or just drag all the footage items onto a comp of that size.
+3. Stack order: 01 is the back-most layer, then 02, 03, ... Reorder in the timeline
+   to match — each layer is already positioned, so no nudging is needed.
+4. Keep "Continuously Rasterize" off: these are rasters.
+
+what becomes a layer
+--------------------
+Export after selecting the frame you want as the composition (the artboard). Its own
+fill is layer 01, then each direct child is a layer of its own — the same rows you see
+in Petals' Layers panel. Select something deeper if you want a deeper split.
+
+limits
+------
+Text is rasterised with the design's font, so it looks exactly as drawn but is not an
+editable text layer. No file format can carry editable text from a design tool into
+After Effects — AI, EPS and SVG all lose it. If you need live type, retype it (the
+font, size and colour are in layers.json), or ask Petals to outline it as shapes.
+`
+
+/** Download a zip of one full-frame PNG per layer, plus a manifest and import notes. */
+export async function exportSelectionLayers(scale = 1) {
+  const snap = collectSelection()
+  if (!snap) return
+  const name = sanitizeName(snap.nodes[snap.roots[0]]?.name, 'petals-export')
+  const pack = await layerBlobs(scale)
+  if (!pack) return
+  const r2 = (n: number) => Math.round(n * 100) / 100
+  const files: Array<{ name: string; data: Uint8Array }> = []
+  for (const f of pack.files) {
+    files.push({ name: `layers/${f.name}`, data: new Uint8Array(await f.blob.arrayBuffer()) })
+  }
+  const manifest = {
+    format: 'petals-layers@1',
+    frame: { width: r2(pack.frame.w), height: r2(pack.frame.h) },
+    scale,
+    layers: pack.files.map((f) => ({
+      file: `layers/${f.name}`,
+      name: f.shape.name,
+      type: f.shape.type,
+      x: r2(f.box.x),
+      y: r2(f.box.y),
+      width: r2(f.box.w),
+      height: r2(f.box.h),
+      opacity: f.shape.opacity ?? 1,
+      rotation: f.shape.rotation ?? 0,
+      text: f.shape.type === 'text' ? f.shape.text : undefined,
+      fontFamily: f.shape.type === 'text' ? f.shape.fontFamily : undefined,
+      fontSize: f.shape.type === 'text' ? f.shape.fontSize : undefined,
+      fontWeight: f.shape.type === 'text' ? f.shape.fontWeight : undefined,
+      color: f.shape.type === 'text' ? f.shape.color : undefined,
+    })),
+  }
+  files.push({ name: 'layers.json', data: new TextEncoder().encode(JSON.stringify(manifest, null, 2)) })
+  files.push({ name: 'IMPORT-AFTER-EFFECTS.txt', data: new TextEncoder().encode(LAYERS_HELP) })
+  download(buildZipArchive(files), `${name}-layers.zip`)
 }
 
 /* ------------------------------ SVG ------------------------------ */

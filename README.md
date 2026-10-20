@@ -114,7 +114,13 @@ state lives in `localStorage`, right in your browser.
 ### Export
 - Raster: PNG / JPG / WEBP / AVIF at 1×–4×
 - Vector: **SVG**, plus a hand-written PostScript writer — **EPS** (and `.ai` interop) with solid
-  fills, PS shading for gradients, rounded corners, embedded rasters and Helvetica text
+  fills, PS shading for gradients, rounded corners, embedded rasters and Helvetica text. Both are
+  print formats: After Effects imports them as **one flat image**, so they are not the motion path
+- **Layers** (After Effects): a zip with one transparent, full-frame PNG per layer
+  (`layers/01 Name.png`…), a `layers.json` manifest (frame size, names, boxes, text properties) and
+  `IMPORT-AFTER-EFFECTS.txt`. Drop the PNGs into a comp of that size and every layer lands already
+  in position — this is the only import that keeps colours, gradients, icons and type as separate
+  layers. AI/EPS/SVG all lose text (and SVG loses raster artwork) on import
 - **Code**: right-click ▸ Copy as ▸ Code, or Export menu — produces a React component styled with
   **Tailwind** (+ inline style only where Tailwind can't express gradients/filters/typography);
   the Export menu variant ships a **zip** with `Component.tsx` plus real `assets/image-N.png` files

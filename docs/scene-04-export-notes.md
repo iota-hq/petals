@@ -89,6 +89,39 @@ it in your own browser, add the bridge flag to the URL — `…/board/<id>?mcp=<
 attaches to your running MCP server; without the flag it opens an empty board. The `MCP` page in
 the app's Menu lists the port and the boards it knows about.
 
+## After Effects: why AI/EPS arrive as one image
+
+Verified by importing the exports into EffectCraft 0.8 (`effectcraft-cli`, AE-style object model),
+which behaves like After Effects here:
+
+| imported as | result |
+| --- | --- |
+| `Scene_04_Prompt_Home.ai`, Composition – Retain Layer Sizes | **1 item, type `Image`**, 2116×1055 — no comp, no layers |
+| `Scene_04_Prompt_Home.eps`, same setting | **1 item, type `Image`**, 2116×1055 |
+| `Scene_04_Prompt_Home.svg`, same setting | **1 item, type `Image`**, 1540×823 |
+| `Layers` zip, PNGs added to a comp | **30 layers**, comp 1404×784, correct stack, render matches Petals |
+
+The causes are in the formats, not in the drawing:
+
+1. Our `.ai` is an **EPS PostScript stream with an `.ai` extension** — `%!PS-Adobe-3.0 EPSF-3.0`,
+   no PDF stream, no top-level layer tree. After Effects only keeps layers from a PDF-compatible
+   Illustrator document saved with real layers (`Composition – Retain Layer Sizes`). EPS is always
+   flattened; Adobe's own guidance is to save AI, not EPS, precisely because EPS gets rasterised.
+2. **Text never survives.** AI/EPS text is flattened on import (ours is PostScript
+   `Helvetica findfont`, not the design's font), and After Effects' SVG import **drops `<text>`**
+   entirely — it asks for text as curves. Our SVG also embeds icons as `<image>` data URLs, and
+   raster content is not supported in an SVG composition import, so icons would go too.
+
+So the layered route is **Export ▸ Layers**: one transparent, full-frame PNG per layer plus
+`layers.json` and `IMPORT-AFTER-EFFECTS.txt`. Every PNG is the whole artboard, so the layers need no
+positioning — import them all into a comp the size in the manifest and the stack (01 at the back)
+matches the design. Text is rasterised with the design's font: pixel-correct, but not an editable
+text layer, because no interchange format carries editable text into After Effects.
+
+The trade-off is honest: layers are rasters rather than vectors. A vector alternative (SVG per
+layer) only pays off once text can be outlined to paths *and* icon artwork is inlined as geometry
+instead of `<image>`; that is a separate piece of work, not a format choice.
+
 ## Re-exporting
 
 With the dev server on `:5173` and a bridge connected:
