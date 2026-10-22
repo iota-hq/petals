@@ -321,7 +321,9 @@ export function LibraryPanel() {
           >
             {o.label}
             {!!count && (
-              <span className="ml-1 font-mono text-[10px] font-normal text-muted-foreground/50">{count}</span>
+              <span aria-hidden="true" className="ml-1 font-mono text-[10px] font-normal text-muted-foreground/50">
+                {count}
+              </span>
             )}
             {selected && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-foreground" />}
           </button>

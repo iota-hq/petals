@@ -170,7 +170,10 @@ await libraryButton.click()
 await dialog.waitFor({ timeout: 10000 })
 ok(true, 'toolbar button opens the panel')
 ok((await page.getByRole('tab', { name: 'Patterns' }).getAttribute('aria-selected')) === 'true', 'patterns is the default source')
-ok((await page.getByRole('tab').allInnerTexts()).join() === 'Patterns,Logos,Icons', 'patterns, logos and icons are offered, in that order')
+ok(
+  (await page.getByRole('tab').allInnerTexts()).map((t) => t.replace(/\s*\d+$/, '')).join() === 'Patterns,Logos,Icons',
+  'patterns, logos and icons are offered, in that order',
+)
 ok((await page.getByText('Emoji', { exact: true }).count()) === 0, 'the emoji source is gone')
 ok((await page.getByLabel('shape colour').count()) === 0, 'the shape-colour checkbox is gone — it did nothing legible')
 await shot('panel')
@@ -371,7 +374,8 @@ await sleep(400)
 
 step = 'pattern-motif'
 const motifFrom = zoomed?.pattern?.motif
-await pat.getByRole('button', { name: 'Seigaiha' }).click()
+// the panel shows four motifs; the long tail lives in the library behind "View more"
+await pat.locator('button[aria-label][aria-pressed="false"]').first().click()
 await sleep(400)
 const switched = await find(rect?.id)
 ok(switched?.pattern?.motif !== motifFrom, `a motif can be swapped in place (${motifFrom} → ${switched?.pattern?.motif})`)

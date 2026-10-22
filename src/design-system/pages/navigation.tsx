@@ -1,15 +1,16 @@
 ﻿import { useState } from 'react'
 import type { ComponentType, ReactNode } from 'react'
-import { Check, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Page, Section, Stage, Tiles, Usage, Rows } from '../Doc'
+import { PanelFrame } from '../bits'
 
 /* ----------------------------------- Tabs ---------------------------------- */
 
 const LIB_TABS: Array<{ id: string; label: string; count: number }> = [
-  { id: 'patterns', label: 'Patterns', count: 24 },
-  { id: 'logos', label: 'Logos', count: 8 },
-  { id: 'icons', label: 'Icons', count: 112 },
+  { id: 'patterns', label: 'Patterns', count: 23 },
+  { id: 'logos', label: 'Logos', count: 14 },
+  { id: 'icons', label: 'Icons', count: 32 },
 ]
 
 function LibraryTabs() {
