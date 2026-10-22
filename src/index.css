@@ -144,3 +144,32 @@
 .scrollbar-auto.is-scrolling::-webkit-scrollbar-thumb {
   background: #3f3f46;
 }
+
+/* landing: the motif band drifts right, slowing to a stop under the pointer */
+.pattern-strip {
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+}
+.pattern-marquee {
+  animation: pattern-marquee 72s linear infinite;
+  will-change: transform;
+}
+.pattern-strip:hover .pattern-marquee,
+.pattern-strip:focus-within .pattern-marquee {
+  animation-play-state: paused;
+}
+@keyframes pattern-marquee {
+  from {
+    transform: translateX(-50%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pattern-marquee {
+    animation: none;
+  }
+}
+
